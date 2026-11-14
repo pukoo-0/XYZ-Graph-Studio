@@ -1,0 +1,1188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XYZ Graph Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #E9EEEC; --panel: #F7F9F8; --sheet: #FFFFFF; --line: #D2DAD6; --line2: #B9C4BF;
+  --ink: #1D2A31; --ink2: #56656C; --ink3: #84939A;
+  --accent: #2357C2; --accent-soft: #E3EBFA; --warn: #9A6200; --warn-soft: #FBF1DD;
+  --bad: #B3261E; --bad-soft: #FBE9E7; --ok: #2E7D4F; --ok-soft: #E3F2E8;
+  --grid: rgba(29, 42, 49, .045); --bar: #1D2A31; --bar2: #C3CDC8; --halo: rgba(255,255,255,.85);
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181B; --panel: #192125; --sheet: #1E272C; --line: #2C383E; --line2: #3D4B52;
+    --ink: #E2E8E6; --ink2: #A2AFB4; --ink3: #75848A;
+    --accent: #85A8F2; --accent-soft: #233150; --warn: #E3AA52; --warn-soft: #3A2D16;
+    --bad: #F2948A; --bad-soft: #3D2220; --ok: #79C796; --ok-soft: #1D3326;
+    --grid: rgba(226, 232, 230, .05); --bar: #DCE3E0; --bar2: #44535A; --halo: rgba(18,24,27,.85);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181B; --panel: #192125; --sheet: #1E272C; --line: #2C383E; --line2: #3D4B52;
+  --ink: #E2E8E6; --ink2: #A2AFB4; --ink3: #75848A;
+  --accent: #85A8F2; --accent-soft: #233150; --warn: #E3AA52; --warn-soft: #3A2D16;
+  --bad: #F2948A; --bad-soft: #3D2220; --ok: #79C796; --ok-soft: #1D3326;
+  --grid: rgba(226, 232, 230, .05); --bar: #DCE3E0; --bar2: #44535A; --halo: rgba(18,24,27,.85);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { margin: 0; font-weight: 600; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- window ---------- */
+.app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; min-height: 620px; }
+.bar { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; letter-spacing: -.005em; white-space: nowrap; }
+.brand svg { width: 26px; height: 26px; }
+.file { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; padding-left: 14px; border-left: 1px solid var(--line); }
+.file-name { font-weight: 500; flex: none; max-width: 50%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.frames { display: flex; align-items: center; gap: 4px; }
+.frames select { max-width: 220px; }
+.bar-actions { display: flex; gap: 8px; margin-left: auto; position: relative; }
+
+.btn { border: 1px solid var(--line2); background: var(--sheet); border-radius: 6px; padding: 6px 12px; cursor: pointer; line-height: 1.3; white-space: nowrap; }
+.btn:hover { border-color: var(--ink3); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+:root[data-theme="dark"] .btn.primary { color: #0E1630; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #0E1630; } }
+.btn.small { padding: 3px 9px; font-size: 13px; }
+.btn.icon { padding: 5px 8px; }
+.link { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+select, input[type=number], input[type=text] { border: 1px solid var(--line2); background: var(--sheet); border-radius: 6px; padding: 5px 8px; }
+input[type=number] { width: 84px; }
+
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; background: var(--sheet); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 10px 30px rgba(15, 25, 30, .14); padding: 6px; min-width: 280px; }
+.menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 5px; cursor: pointer; }
+.menu button:hover { background: var(--accent-soft); }
+.menu .ext { color: var(--ink3); font-family: var(--mono); font-size: 12px; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+.menu .numbering { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px 4px; color: var(--ink2); font-size: 13px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, 1fr); min-height: 0; }
+
+/* ---------- molecule stage ---------- */
+.stage { position: relative; min-height: 0; overflow: hidden; border-right: 1px solid var(--line);
+  background-color: var(--sheet);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px; }
+#mol { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#mol.dragging { cursor: grabbing; }
+.stage-top { position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; pointer-events: none; }
+.stage-top > * { pointer-events: auto; }
+.formula { font-size: 28px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; }
+.formula sub { font-size: .55em; font-weight: 500; vertical-align: -.1em; }
+.counts { color: var(--ink2); margin-top: 4px; }
+.verdict-pill { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 4px 10px 4px 8px; border-radius: 99px; font-weight: 500; font-size: 13px; cursor: pointer; border: 1px solid transparent; }
+.verdict-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.verdict-pill.ok { background: var(--ok-soft); color: var(--ok); }
+.verdict-pill.bad { background: var(--bad-soft); color: var(--bad); }
+.toggles { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
+.toggles label { display: flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--ink2); user-select: none; }
+.toggles input { position: absolute; opacity: 0; pointer-events: none; }
+.toggles label:has(input:checked) { background: var(--sheet); color: var(--ink); box-shadow: 0 0 0 1px var(--line2); }
+.toggles label:has(input:focus-visible) { outline: 2px solid var(--accent); }
+.stage-bottom { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; color: var(--ink2); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 11px; height: 11px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); display: inline-block; }
+.legend .near-key { display: inline-block; width: 18px; border-top: 2px dashed var(--warn); }
+.hint { font-size: 12px; color: var(--ink3); text-align: right; }
+.inspector { position: absolute; left: 16px; bottom: 44px; width: min(360px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 25, 30, .12); padding: 12px 14px; font-size: 13px; }
+.inspector h3 { font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+.inspector h3 .x { border: 0; background: none; cursor: pointer; color: var(--ink3); font-size: 18px; line-height: 1; }
+.inspector .sub { color: var(--ink2); margin: 2px 0 8px; }
+.inspector table { width: 100%; border-collapse: collapse; }
+.inspector td { padding: 3px 0; border-top: 1px solid var(--line); }
+.inspector td:nth-child(2) { text-align: right; padding-right: 10px; }
+.inspector td:last-child { text-align: right; width: 1%; white-space: nowrap; }
+.inspector .group { color: var(--ink3); padding-top: 8px; }
+.tip { position: absolute; z-index: 20; pointer-events: none; background: var(--ink); color: var(--panel); border-radius: 6px; padding: 6px 9px; font-size: 12px; line-height: 1.45; max-width: 280px; }
+.tip b { font-weight: 600; }
+
+.empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; }
+.empty-box { max-width: 460px; text-align: center; }
+.empty-box h1 { font-size: 26px; letter-spacing: -.02em; line-height: 1.2; }
+.empty-box p { color: var(--ink2); margin: 10px 0 18px; }
+.empty-box .try { margin-top: 18px; color: var(--ink2); }
+.empty-box .try .link + .link::before { content: ", "; color: var(--ink2); text-decoration: none; display: inline-block; margin-right: 4px; }
+.drop-glow { position: absolute; inset: 10px; border: 2px dashed var(--accent); border-radius: 14px; background: color-mix(in srgb, var(--accent) 7%, transparent); display: grid; place-items: center; font-weight: 600; color: var(--accent); z-index: 25; pointer-events: none; }
+
+/* ---------- tool panel ---------- */
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--panel); position: relative; }
+.tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs button { border: 0; background: none; padding: 12px 10px 10px; cursor: pointer; color: var(--ink2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; font-weight: 500; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs button .n { display: inline-block; margin-left: 5px; padding: 0 6px; border-radius: 99px; background: var(--bad-soft); color: var(--bad); font-size: 12px; }
+.busy { position: absolute; left: 0; right: 0; top: 0; height: 2px; overflow: hidden; }
+.busy::after { content: ""; position: absolute; left: -30%; width: 30%; height: 100%; background: var(--accent); animation: slide 1s linear infinite; }
+@keyframes slide { to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .busy::after { animation: none; left: 0; width: 100%; opacity: .5; } }
+.body { overflow: auto; padding: 18px 20px 40px; }
+.body section + section { margin-top: 26px; }
+.body h2 { font-size: 15px; margin-bottom: 4px; }
+.body p.note { color: var(--ink2); margin: 0 0 10px; max-width: 62ch; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row.space { justify-content: space-between; }
+.muted { color: var(--ink2); }
+.small { font-size: 13px; }
+
+.verdict { border-radius: 10px; padding: 14px 16px; border: 1px solid; }
+.verdict.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.verdict.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+.verdict strong { display: block; font-size: 15px; }
+.verdict.ok strong { color: var(--ok); }
+.verdict.bad strong { color: var(--bad); }
+.verdict p { margin: 4px 0 0; color: var(--ink2); }
+.issues { list-style: none; margin: 10px 0 0; padding: 0; max-height: 190px; overflow: auto; }
+.issues li { padding: 4px 0; border-top: 1px solid color-mix(in srgb, var(--bad) 18%, transparent); display: flex; gap: 10px; align-items: baseline; }
+.issues .atom { min-width: 52px; }
+
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--ink2); font: 11px var(--sans); }
+.chart .axis { stroke: var(--line2); }
+.chart .gridline { stroke: var(--line); }
+.chart .cut { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart text.cut-label { fill: var(--accent); font-weight: 500; }
+.key { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--ink2); margin-top: 4px; }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { width: 12px; height: 9px; display: inline-block; border-radius: 2px; }
+
+.rules { display: grid; gap: 8px; }
+.rule { border: 1px solid var(--line2); border-radius: 10px; padding: 12px 14px; background: var(--sheet); cursor: pointer; }
+.rule:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rule-head { display: flex; align-items: center; gap: 9px; font-weight: 500; }
+.rule-head input { accent-color: var(--accent); margin: 0; }
+.rule p { margin: 4px 0 0 25px; color: var(--ink2); font-size: 13px; max-width: 58ch; }
+.rule .controls { margin: 10px 0 0 25px; }
+.ptable { border-collapse: collapse; margin-top: 4px; }
+.ptable td { padding: 2px 6px 2px 0; }
+.ptable input[type=text] { width: 70px; }
+.ptable input[type=number] { width: 80px; }
+
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th { text-align: left; font-weight: 500; color: var(--ink2); padding: 6px 8px; border-bottom: 1px solid var(--line2); position: sticky; top: 0; background: var(--panel); }
+table.data td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+table.data td.num, table.data th.num { text-align: right; }
+table.data td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+table.data tr.clickable { cursor: pointer; }
+table.data tr.clickable:hover td { background: var(--accent-soft); }
+table.data tr.sel td { background: var(--accent-soft); }
+.tag { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: 12px; font-weight: 500; }
+.tag.yes { background: var(--ok-soft); color: var(--ok); }
+.tag.no { background: var(--warn-soft); color: var(--warn); }
+.tag.hand { background: var(--accent-soft); color: var(--accent); }
+.scroll { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
+.scroll table.data th { background: var(--sheet); }
+
+.seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: var(--sheet); padding: 5px 11px; cursor: pointer; color: var(--ink2); }
+.seg button + button { border-left: 1px solid var(--line2); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+
+.figure { border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); padding: 12px; }
+.matrix-wrap { position: relative; }
+#heat { display: block; width: 100%; max-width: 560px; image-rendering: pixelated; cursor: crosshair; }
+.readout { min-height: 22px; margin-top: 8px; font-size: 13px; color: var(--ink2); }
+pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 360px; overflow: auto; background: var(--sheet); border: 1px solid var(--line); border-radius: 8px; white-space: pre; }
+
+.figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); overflow: hidden; }
+.figures > div { padding: 12px 14px; }
+.figures > div + div { border-left: 1px solid var(--line); }
+.figures .v { font-family: var(--mono); font-size: 19px; font-weight: 500; letter-spacing: -.01em; margin-top: 2px; }
+.figures .l { color: var(--ink2); font-size: 13px; line-height: 1.35; }
+.callout { margin-top: 10px; border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 9px 12px; border-radius: 0 8px 8px 0; font-size: 13px; }
+
+.graph-svg { width: 100%; height: auto; display: block; }
+.graph-svg line { stroke: var(--ink3); stroke-width: 1.3; }
+.graph-svg line.hl { stroke: var(--accent); stroke-width: 2.4; }
+.graph-svg circle { stroke: rgba(0,0,0,.35); stroke-width: 1; cursor: pointer; }
+.graph-svg circle.sel { stroke: var(--accent); stroke-width: 3; }
+.graph-svg text { font: 500 9px var(--sans); fill: #1D2A31; pointer-events: none; }
+
+.status { display: flex; align-items: center; gap: 14px; padding: 6px 18px; border-top: 1px solid var(--line); background: var(--panel); color: var(--ink2); font-size: 12px; }
+.status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); display: inline-block; margin-right: 6px; }
+.status .dot.ready { background: var(--ok); }
+.status .dot.fail { background: var(--bad); }
+.status .credit { margin-left: auto; font-style: italic; }
+.toast { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 9px 14px; border-radius: 8px; z-index: 50; max-width: min(560px, calc(100% - 32px)); font-size: 13px; }
+
+@media (max-width: 900px) {
+  .app { height: auto; min-height: 100vh; }
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 58vh; min-height: 380px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .panel { min-height: 70vh; }
+  .body { overflow: visible; }
+  .bar { flex-wrap: wrap; padding: 10px 16px; }
+  .file { order: 3; flex-basis: 100%; border-left: 0; padding-left: 0; }
+  .figures { grid-template-columns: minmax(0, 1fr); }
+  .figures > div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .hint { display: none; }
+  .formula { font-size: 22px; }
+}
+@media (max-width: 520px) {
+  .stage-top { flex-direction: column; }
+  .brand span { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <svg viewBox="0 0 26 26" aria-hidden="true">
+        <line x1="6" y1="19" x2="13" y2="6" stroke="currentColor" stroke-width="1.6"/>
+        <line x1="13" y1="6" x2="20" y2="19" stroke="currentColor" stroke-width="1.6"/>
+        <line x1="6" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.2 2"/>
+        <circle cx="13" cy="6" r="3.3" fill="#909090" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="6" cy="19" r="3.3" fill="#3050F8" stroke="currentColor" stroke-width="1.2"/>
+        <circle cx="20" cy="19" r="3.3" fill="#FF0D0D" stroke="currentColor" stroke-width="1.2"/>
+      </svg>
+      <span>XYZ Graph Studio</span>
+    </div>
+    <div class="file" id="fileInfo" hidden>
+      <span class="file-name" id="fileName"></span>
+      <span class="file-meta" id="fileMeta"></span>
+      <span class="frames" id="frames" hidden>
+        <button class="btn icon small" id="framePrev" aria-label="Previous frame">‹</button>
+        <select id="frameSel" aria-label="Frame"></select>
+        <button class="btn icon small" id="frameNext" aria-label="Next frame">›</button>
+      </span>
+    </div>
+    <div class="bar-actions">
+      <button class="btn" id="openBtn">Open .xyz</button>
+      <button class="btn primary" id="dlBtn" disabled aria-haspopup="true" aria-expanded="false">Download</button>
+      <div class="menu" id="dlMenu" hidden role="menu"></div>
+      <input type="file" id="fileInput" accept=".xyz,.txt,text/plain" hidden>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="stage" id="stage" aria-label="Molecule">
+      <canvas id="mol" aria-label="3D molecule view. Drag to rotate, scroll to zoom."></canvas>
+      <div class="stage-top" id="stageTop" hidden>
+        <div>
+          <div class="formula" id="formula"></div>
+          <div class="counts" id="counts"></div>
+          <button class="verdict-pill" id="pill"></button>
+        </div>
+        <div class="toggles" role="group" aria-label="Show">
+          <label><input type="checkbox" id="vH" checked>Hydrogens</label>
+          <label><input type="checkbox" id="vLabels">Numbers</label>
+          <label><input type="checkbox" id="vNear" checked>Close calls</label>
+        </div>
+      </div>
+      <div class="stage-bottom" id="stageBottom" hidden>
+        <div class="legend" id="legend"></div>
+        <div class="hint">Drag to rotate, scroll to zoom, double-click to reset.<br>Click an atom to inspect it.</div>
+      </div>
+      <div class="inspector" id="inspector" hidden></div>
+      <div class="empty" id="empty">
+        <div class="empty-box">
+          <h1>Drop an .xyz file to see its molecular graph</h1>
+          <p>Bonds are worked out from the distances between atoms, then checked, so you can trust the adjacency matrix and every index built from it. Trajectories with many frames work too.</p>
+          <button class="btn primary" id="emptyOpen">Open .xyz file</button>
+          <div class="try" id="try">Or try <button class="link" data-ex="benzene">benzene</button><button class="link" data-ex="cubane">cubane</button><button class="link" data-ex="adamantane">adamantane</button></div>
+        </div>
+      </div>
+      <div class="drop-glow" id="dropGlow" hidden>Drop the .xyz file to open it</div>
+      <div class="tip" id="tip" hidden></div>
+    </section>
+
+    <section class="panel" aria-label="Results">
+      <nav class="tabs" role="tablist" id="tabs"></nav>
+      <div class="body" id="body"></div>
+      <div class="busy" id="busy" hidden></div>
+    </section>
+  </div>
+
+  <footer class="status">
+    <span><span class="dot" id="engineDot"></span><span id="engineText">Starting Python in your browser…</span></span>
+    <span class="credit">Made by George and Hafiz</span>
+  </footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+const PY_FILES = {"graph_core.py": "\"\"\"\ngraph_core.py — the chemistry behind XYZ Graph Studio.\n\nTurns an .xyz file into a molecular graph (atoms = nodes, bonds = edges) and computes:\n  * bonds, with a check that every atom has a usual number of them\n  * the adjacency matrix A and the vertex-weighted matrix W = A + diag(d)\n  * eigenvalues of W, graph energies, spectral moments mu_k = tr(W^k)\n  * Wiener index, Estrada index (with subgraph centrality), Zagreb and Randic indices,\n    for the full graph and for the hydrogen-suppressed graph\n\nOnly needs numpy, so the same file runs on a desktop and inside the browser (Pyodide).\nAtom indices inside this module always start at 0; the user interface decides how to number them.\n\"\"\"\nfrom __future__ import annotations\n\nimport math\nfrom collections import Counter, deque\nfrom dataclasses import dataclass\n\nimport numpy as np\n\n# ---------------------------------------------------------------- elements\nSYMBOLS = [\n    \"X\", \"H\", \"He\", \"Li\", \"Be\", \"B\", \"C\", \"N\", \"O\", \"F\", \"Ne\", \"Na\", \"Mg\", \"Al\", \"Si\", \"P\", \"S\", \"Cl\", \"Ar\",\n    \"K\", \"Ca\", \"Sc\", \"Ti\", \"V\", \"Cr\", \"Mn\", \"Fe\", \"Co\", \"Ni\", \"Cu\", \"Zn\", \"Ga\", \"Ge\", \"As\", \"Se\", \"Br\", \"Kr\",\n    \"Rb\", \"Sr\", \"Y\", \"Zr\", \"Nb\", \"Mo\", \"Tc\", \"Ru\", \"Rh\", \"Pd\", \"Ag\", \"Cd\", \"In\", \"Sn\", \"Sb\", \"Te\", \"I\", \"Xe\",\n    \"Cs\", \"Ba\", \"La\", \"Ce\", \"Pr\", \"Nd\", \"Pm\", \"Sm\", \"Eu\", \"Gd\", \"Tb\", \"Dy\", \"Ho\", \"Er\", \"Tm\", \"Yb\", \"Lu\",\n    \"Hf\", \"Ta\", \"W\", \"Re\", \"Os\", \"Ir\", \"Pt\", \"Au\", \"Hg\", \"Tl\", \"Pb\", \"Bi\", \"Po\", \"At\", \"Rn\",\n    \"Fr\", \"Ra\", \"Ac\", \"Th\", \"Pa\", \"U\", \"Np\", \"Pu\", \"Am\", \"Cm\", \"Bk\", \"Cf\", \"Es\", \"Fm\", \"Md\", \"No\", \"Lr\",\n    \"Rf\", \"Db\", \"Sg\", \"Bh\", \"Hs\", \"Mt\", \"Ds\", \"Rg\", \"Cn\", \"Nh\", \"Fl\", \"Mc\", \"Lv\", \"Ts\", \"Og\",\n]\nZ_OF = {s: i for i, s in enumerate(SYMBOLS) if i > 0}\n\n# Covalent radii in Å (Cordero et al., Dalton Trans. 2008, 2832; low-spin values for Mn, Fe, Co; sp3 for C).\nCOVALENT_RADII = {\n    \"H\": 0.31, \"He\": 0.28, \"Li\": 1.28, \"Be\": 0.96, \"B\": 0.84, \"C\": 0.76, \"N\": 0.71, \"O\": 0.66, \"F\": 0.57,\n    \"Ne\": 0.58, \"Na\": 1.66, \"Mg\": 1.41, \"Al\": 1.21, \"Si\": 1.11, \"P\": 1.07, \"S\": 1.05, \"Cl\": 1.02, \"Ar\": 1.06,\n    \"K\": 2.03, \"Ca\": 1.76, \"Sc\": 1.70, \"Ti\": 1.60, \"V\": 1.53, \"Cr\": 1.39, \"Mn\": 1.39, \"Fe\": 1.32, \"Co\": 1.26,\n    \"Ni\": 1.24, \"Cu\": 1.32, \"Zn\": 1.22, \"Ga\": 1.22, \"Ge\": 1.20, \"As\": 1.19, \"Se\": 1.20, \"Br\": 1.20, \"Kr\": 1.16,\n    \"Rb\": 2.20, \"Sr\": 1.95, \"Y\": 1.90, \"Zr\": 1.75, \"Nb\": 1.64, \"Mo\": 1.54, \"Tc\": 1.47, \"Ru\": 1.46, \"Rh\": 1.42,\n    \"Pd\": 1.39, \"Ag\": 1.45, \"Cd\": 1.44, \"In\": 1.42, \"Sn\": 1.39, \"Sb\": 1.39, \"Te\": 1.38, \"I\": 1.39, \"Xe\": 1.40,\n    \"Cs\": 2.44, \"Ba\": 2.15, \"La\": 2.07, \"Ce\": 2.04, \"Pr\": 2.03, \"Nd\": 2.01, \"Pm\": 1.99, \"Sm\": 1.98, \"Eu\": 1.98,\n    \"Gd\": 1.96, \"Tb\": 1.94, \"Dy\": 1.92, \"Ho\": 1.92, \"Er\": 1.89, \"Tm\": 1.90, \"Yb\": 1.87, \"Lu\": 1.87, \"Hf\": 1.75,\n    \"Ta\": 1.70, \"W\": 1.62, \"Re\": 1.51, \"Os\": 1.44, \"Ir\": 1.41, \"Pt\": 1.36, \"Au\": 1.36, \"Hg\": 1.32, \"Tl\": 1.45,\n    \"Pb\": 1.46, \"Bi\": 1.48, \"Po\": 1.40, \"At\": 1.50, \"Rn\": 1.50, \"Fr\": 2.60, \"Ra\": 2.21, \"Ac\": 2.15, \"Th\": 2.06,\n    \"Pa\": 2.00, \"U\": 1.96, \"Np\": 1.90, \"Pu\": 1.87, \"Am\": 1.80, \"Cm\": 1.69,\n}\nDEFAULT_RADIUS = 1.50\n\n# The cutoff table from the original desktop app (Å). Kept so old results can be reproduced.\nLEGACY_PAIR_TABLE = {\n    \"C-C\": 1.55, \"C-N\": 1.50, \"C-O\": 1.45, \"C-H\": 1.12, \"N-N\": 1.40,\n    \"N-O\": 1.37, \"N-H\": 1.00, \"O-O\": 1.35, \"O-H\": 0.97, \"H-H\": 0.80,\n}\n\n# Usual numbers of neighbours (bond order is ignored, so sp2 carbon has 3 and sp carbon has 2).\nUSUAL_DEGREE = {\n    \"H\": {1}, \"B\": {3, 4}, \"C\": {2, 3, 4}, \"N\": {1, 2, 3, 4}, \"O\": {1, 2}, \"F\": {1}, \"Si\": {4},\n    \"P\": {3, 4, 5}, \"S\": {1, 2, 3, 4, 6}, \"Cl\": {1}, \"Br\": {1}, \"I\": {1},\n}\n\nDEFAULT_SETTINGS = {\n    \"rule\": \"radii\",          # \"radii\": d <= scale*(r_a + r_b);  \"table\": pair table, radii*fallback for other pairs\n    \"scale\": 1.20,\n    \"table\": dict(LEGACY_PAIR_TABLE),\n    \"fallback\": 1.20,\n    \"window\": 0.10,           # pairs this close to their cutoff (Å) are listed for review\n    \"diagonal\": \"Z\",          # diagonal of W: \"Z\" (atomic number) or \"zero\"\n    \"kmax\": 30,\n    \"add\": [],                # bonds you added by hand, [[i, j], ...]\n    \"remove\": [],             # bonds you removed by hand\n}\n\n\ndef element_symbol(token: str) -> str:\n    \"\"\"'c' -> 'C', 'CL' -> 'Cl', '6' -> 'C', 'C12' -> 'C', 'Fe1' -> 'Fe'.\"\"\"\n    t = token.strip()\n    if t.isdigit():\n        z = int(t)\n        return SYMBOLS[z] if 0 < z < len(SYMBOLS) else f\"Z{z}\"\n    letters = \"\".join(ch for ch in t if ch.isalpha())\n    if not letters:\n        raise ValueError(f\"'{token}' is not an element\")\n    two = letters[:2].capitalize()\n    if len(letters) >= 2 and two in Z_OF:\n        return two\n    one = letters[0].upper()\n    if one in Z_OF:\n        return one\n    raise ValueError(f\"'{token}' is not an element\")\n\n\ndef atomic_number(sym: str) -> int:\n    return Z_OF.get(sym, 0)\n\n\ndef radius(sym: str) -> float:\n    return COVALENT_RADII.get(sym, DEFAULT_RADIUS)\n\n\n# ---------------------------------------------------------------- reading\n@dataclass\nclass Frame:\n    comment: str\n    symbols: list\n    coords: np.ndarray  # shape (n, 3), Å\n\n    @property\n    def Z(self):\n        return [atomic_number(s) for s in self.symbols]\n\n    @property\n    def n(self):\n        return len(self.symbols)\n\n\ndef parse_xyz(text: str) -> list:\n    \"\"\"Read every frame of an .xyz file (also multi-frame trajectories from ORCA, xtb, CREST ...).\"\"\"\n    lines = text.replace(\"\\r\\n\", \"\\n\").replace(\"\\r\", \"\\n\").split(\"\\n\")\n    frames, i = [], 0\n    while i < len(lines):\n        if not lines[i].strip():\n            i += 1\n            continue\n        head = lines[i].split()\n        try:\n            n = int(head[0])\n        except ValueError:\n            raise ValueError(f\"Line {i + 1} should hold the number of atoms, but it reads “{lines[i].strip()[:40]}”.\")\n        if n <= 0:\n            raise ValueError(f\"Line {i + 1}: the number of atoms must be positive.\")\n        comment = lines[i + 1].strip() if i + 1 < len(lines) else \"\"\n        syms, xyz = [], []\n        for k in range(n):\n            ln = i + 2 + k\n            if ln >= len(lines) or not lines[ln].strip():\n                raise ValueError(f\"Frame {len(frames) + 1} says it has {n} atoms, but only {k} were found.\")\n            parts = lines[ln].split()\n            if len(parts) < 4:\n                raise ValueError(f\"Line {ln + 1} should look like “C 0.0 0.0 0.0”.\")\n            try:\n                syms.append(element_symbol(parts[0]))\n                xyz.append([float(parts[1]), float(parts[2]), float(parts[3])])\n            except ValueError as e:\n                raise ValueError(f\"Line {ln + 1}: {e}\") from None\n        frames.append(Frame(comment, syms, np.array(xyz, dtype=float)))\n        i += 2 + n\n    if not frames:\n        raise ValueError(\"The file has no atoms in it.\")\n    return frames\n\n\n# ---------------------------------------------------------------- bonds\ndef pair_name(a: str, b: str) -> str:\n    \"\"\"Sorted so that C comes first, then H, then alphabetical (Hill order): 'C-H', 'C-O', 'H-O', 'N-O'.\"\"\"\n    def key(s):\n        return (0 if s == \"C\" else 1 if s == \"H\" else 2, s)\n    a, b = sorted((a, b), key=key)\n    return f\"{a}-{b}\"\n\n\ndef _table_lookup(table: dict, a: str, b: str):\n    for k in (f\"{a}-{b}\", f\"{b}-{a}\"):\n        if k in table:\n            return float(table[k])\n    return None\n\n\ndef cutoff(a: str, b: str, settings: dict) -> float:\n    if settings.get(\"rule\") == \"table\":\n        v = _table_lookup(settings.get(\"table\") or {}, a, b)\n        if v is not None:\n            return v\n        return float(settings.get(\"fallback\", 1.2)) * (radius(a) + radius(b))\n    return float(settings.get(\"scale\", 1.2)) * (radius(a) + radius(b))\n\n\ndef distance_matrix(X: np.ndarray) -> np.ndarray:\n    d = X[:, None, :] - X[None, :, :]\n    return np.sqrt((d * d).sum(axis=2))\n\n\ndef cutoff_matrix(symbols: list, settings: dict) -> np.ndarray:\n    kinds = sorted(set(symbols))\n    idx = {s: k for k, s in enumerate(kinds)}\n    small = np.array([[cutoff(a, b, settings) for b in kinds] for a in kinds])\n    v = np.array([idx[s] for s in symbols])\n    return small[v][:, v]\n\n\ndef _clean_pairs(pairs, n):\n    out = set()\n    for p in pairs or []:\n        i, j = int(p[0]), int(p[1])\n        if i != j and 0 <= i < n and 0 <= j < n:\n            out.add((min(i, j), max(i, j)))\n    return out\n\n\ndef find_bonds(frame: Frame, settings: dict) -> dict:\n    \"\"\"Bonds from the distance rule, then your manual additions and removals.\"\"\"\n    n = frame.n\n    D = distance_matrix(frame.coords)\n    C = cutoff_matrix(frame.symbols, settings)\n    iu, ju = np.triu_indices(n, 1)\n    d, c = D[iu, ju], C[iu, ju]\n    by_rule = (d <= c) & (d > 1e-6)\n    added = _clean_pairs(settings.get(\"add\"), n)\n    removed = _clean_pairs(settings.get(\"remove\"), n)\n\n    bonds = []\n    for k in np.nonzero(by_rule)[0]:\n        i, j = int(iu[k]), int(ju[k])\n        if (i, j) not in removed:\n            bonds.append((i, j, float(d[k]), float(c[k]), \"rule\"))\n    rule_set = {(b[0], b[1]) for b in bonds} | {p for p in removed}\n    for i, j in sorted(added):\n        if (i, j) not in rule_set:\n            bonds.append((i, j, float(D[i, j]), float(C[i, j]), \"added\"))\n    bonds.sort(key=lambda b: (b[0], b[1]))\n\n    window = float(settings.get(\"window\", 0.10))\n    near = []\n    for k in np.nonzero(np.abs(d - c) <= window)[0]:\n        i, j = int(iu[k]), int(ju[k])\n        near.append({\"i\": i, \"j\": j, \"d\": float(d[k]), \"cut\": float(c[k]),\n                     \"by_rule\": bool(by_rule[k]), \"pair\": pair_name(frame.symbols[i], frame.symbols[j])})\n    near.sort(key=lambda r: abs(r[\"d\"] - r[\"cut\"]))\n    overlaps = [(int(iu[k]), int(ju[k]), float(d[k])) for k in np.nonzero(d < 0.5)[0]]\n    return {\"bonds\": bonds, \"near\": near, \"overlaps\": overlaps,\n            \"removed\": sorted(removed), \"added\": sorted(added), \"D\": D, \"C\": C}\n\n\ndef adjacency(n: int, bonds) -> np.ndarray:\n    A = np.zeros((n, n), dtype=float)\n    for b in bonds:\n        A[b[0], b[1]] = A[b[1], b[0]] = 1.0\n    return A\n\n\n# ---------------------------------------------------------------- graph theory\ndef neighbours(A: np.ndarray) -> list:\n    return [list(np.nonzero(A[i])[0]) for i in range(A.shape[0])]\n\n\ndef components(A: np.ndarray) -> list:\n    nb, seen, out = neighbours(A), set(), []\n    for s in range(A.shape[0]):\n        if s in seen:\n            continue\n        comp, q = [], deque([s])\n        seen.add(s)\n        while q:\n            u = q.popleft()\n            comp.append(u)\n            for v in nb[u]:\n                if v not in seen:\n                    seen.add(v)\n                    q.append(v)\n        out.append(sorted(comp))\n    return out\n\n\ndef path_lengths(A: np.ndarray) -> np.ndarray:\n    \"\"\"Shortest path length in bonds between every pair (breadth-first search); -1 if not connected.\"\"\"\n    n = A.shape[0]\n    nb = neighbours(A)\n    L = np.full((n, n), -1, dtype=int)\n    for s in range(n):\n        L[s, s] = 0\n        q = deque([s])\n        while q:\n            u = q.popleft()\n            for v in nb[u]:\n                if L[s, v] < 0:\n                    L[s, v] = L[s, u] + 1\n                    q.append(v)\n    return L\n\n\ndef wiener(A: np.ndarray) -> float:\n    \"\"\"W = sum over pairs u<v of d(u,v). For a disconnected graph, pairs in different fragments are skipped.\"\"\"\n    if A.shape[0] < 2:\n        return 0.0\n    L = path_lengths(A)\n    iu = np.triu_indices(A.shape[0], 1)\n    vals = L[iu]\n    return float(vals[vals > 0].sum())\n\n\ndef estrada(A: np.ndarray):\n    \"\"\"EE = sum exp(lambda_i) = tr(exp(A)); subgraph centrality of node v = (exp(A))_vv.\"\"\"\n    if A.shape[0] == 0:\n        return 0.0, np.zeros(0)\n    vals, vecs = np.linalg.eigh(A)\n    e = np.exp(vals)\n    return float(e.sum()), (vecs * vecs) @ e\n\n\ndef degree_indices(A: np.ndarray) -> dict:\n    deg = A.sum(axis=1)\n    iu, ju = np.nonzero(np.triu(A, 1))\n    prod = deg[iu] * deg[ju]\n    return {\n        \"zagreb1\": float((deg ** 2).sum()),\n        \"zagreb2\": float(prod.sum()),\n        \"randic\": float((1.0 / np.sqrt(prod)).sum()) if len(prod) else 0.0,\n    }\n\n\ndef spectrum(W: np.ndarray, kmax: int = 30) -> dict:\n    \"\"\"Eigenvalues of W (largest first), energies and spectral moments.\"\"\"\n    n = W.shape[0]\n    lam = np.sort(np.linalg.eigvalsh(W))[::-1] if n else np.zeros(0)\n    tr = float(np.trace(W))\n    mean = tr / n if n else 0.0\n    kmax = int(max(1, min(int(kmax), 200)))\n    with np.errstate(over=\"ignore\", invalid=\"ignore\"):\n        mu = [float(np.sum(lam ** k)) for k in range(1, kmax + 1)]\n    mu = [m if math.isfinite(m) else None for m in mu]\n    e_abs = float(np.abs(lam).sum())\n    return {\n        \"eigenvalues\": lam.tolist(),\n        \"trace\": tr,\n        \"energy_abs\": e_abs,\n        \"energy_centred\": float(np.abs(lam - mean).sum()),\n        \"energy_is_trace\": bool(n and lam.min() >= -1e-9),\n        \"moments\": mu,\n    }\n\n\ndef weighted_matrix(A: np.ndarray, symbols: list, diagonal: str = \"Z\") -> np.ndarray:\n    W = A.copy()\n    if diagonal == \"Z\":\n        np.fill_diagonal(W, [atomic_number(s) for s in symbols])\n    return W\n\n\n# ---------------------------------------------------------------- checks\ndef valence_check(symbols: list, A: np.ndarray) -> list:\n    deg = A.sum(axis=1).astype(int)\n    issues = []\n    for i, s in enumerate(symbols):\n        d = int(deg[i])\n        if d == 0 and len(symbols) > 1:\n            issues.append({\"i\": i, \"level\": \"error\", \"degree\": d, \"text\": \"has no bonds at all\"})\n        elif s in USUAL_DEGREE and d not in USUAL_DEGREE[s]:\n            usual = sorted(USUAL_DEGREE[s])\n            want = str(usual[0]) if len(usual) == 1 else f\"{usual[0]} to {usual[-1]}\"\n            level = \"error\" if (s == \"H\" or d > max(usual)) else \"warn\"\n            issues.append({\"i\": i, \"level\": level, \"degree\": d,\n                           \"text\": f\"has {d} bond{'s' if d != 1 else ''}; {s} usually has {want}\"})\n    return issues\n\n\n# ---------------------------------------------------------------- everything at once\ndef merged_settings(settings: dict | None) -> dict:\n    s = dict(DEFAULT_SETTINGS)\n    s.update({k: v for k, v in (settings or {}).items() if v is not None})\n    return s\n\n\ndef analyse(frame: Frame, settings: dict | None = None) -> dict:\n    s = merged_settings(settings)\n    syms, n = frame.symbols, frame.n\n    fb = find_bonds(frame, s)\n    A = adjacency(n, fb[\"bonds\"])\n    W = weighted_matrix(A, syms, s[\"diagonal\"])\n    spec = spectrum(W, s[\"kmax\"])\n    lam_A = np.linalg.eigvalsh(A) if n else np.zeros(0)\n\n    heavy = [i for i, e in enumerate(syms) if e != \"H\"]\n    Ah = A[np.ix_(heavy, heavy)]\n    comps, comps_h = components(A), components(Ah) if heavy else []\n    ee_full, sc_full = estrada(A)\n    ee_h, sc_h = estrada(Ah)\n    sc_heavy_full = np.full(n, np.nan)\n    sc_heavy_full[heavy] = sc_h\n\n    graphs = {}\n    for key, M, comp, ee in ((\"full\", A, comps, ee_full), (\"heavy\", Ah, comps_h, ee_h)):\n        graphs[key] = {\"nodes\": int(M.shape[0]), \"edges\": int(np.triu(M, 1).sum()), \"fragments\": len(comp),\n                       \"wiener\": wiener(M), \"estrada\": ee, **degree_indices(M)}\n\n    return {\n        \"settings\": s,\n        \"n\": n,\n        \"symbols\": syms,\n        \"Z\": frame.Z,\n        \"coords\": frame.coords.tolist(),\n        \"comment\": frame.comment,\n        \"formula\": formula(syms),\n        \"bonds\": fb[\"bonds\"],\n        \"near\": fb[\"near\"],\n        \"overlaps\": fb[\"overlaps\"],\n        \"added\": fb[\"added\"],\n        \"removed\": fb[\"removed\"],\n        \"degree\": A.sum(axis=1).astype(int).tolist(),\n        \"fragments\": comps,\n        \"issues\": valence_check(syms, A),\n        \"spectrum\": spec,\n        \"energy_A\": float(np.abs(lam_A).sum()),\n        \"graphs\": graphs,\n        \"heavy\": heavy,\n        \"centrality_full\": sc_full.tolist(),\n        \"centrality_heavy\": [None if math.isnan(v) else float(v) for v in sc_heavy_full],\n        \"_A\": A, \"_W\": W, \"_D\": fb[\"D\"], \"_C\": fb[\"C\"],\n    }\n\n\ndef formula(symbols: list) -> str:\n    c = Counter(symbols)\n    order = ([\"C\", \"H\"] if \"C\" in c else []) + sorted(k for k in c if not (\"C\" in c and k in (\"C\", \"H\")))\n    return \"\".join(f\"{e}{c[e] if c[e] > 1 else ''}\" for e in order)\n\n\ndef histogram(res: dict, settings: dict, pair: str | None = None, lo: float = 0.4, width: float = 0.02):\n    \"\"\"Counts of interatomic distances, split into bonded and not bonded, up to a little past the largest cutoff.\"\"\"\n    D, C, syms, n = res[\"_D\"], res[\"_C\"], res[\"symbols\"], res[\"n\"]\n    kinds = sorted(set(syms))\n    t = np.array([kinds.index(s) for s in syms])\n    iu, ju = np.triu_indices(n, 1)\n    a, b = np.minimum(t[iu], t[ju]), np.maximum(t[iu], t[ju])\n    code = a * len(kinds) + b\n    names = {int(c): pair_name(kinds[int(c) // len(kinds)], kinds[int(c) % len(kinds)]) for c in np.unique(code)}\n    d, c = D[iu, ju], C[iu, ju]\n    cuts = {names[int(k)]: float(c[np.argmax(code == k)]) for k in np.unique(code)}\n    if pair:\n        keep = np.isin(code, [k for k, v in names.items() if v == pair])\n        d, c, iu, ju = d[keep], c[keep], iu[keep], ju[keep]\n    hi = float(min(max(c.max() if len(c) else 2.0, 1.0) + 0.9, 6.0))\n    bonded = res[\"_A\"][iu, ju] > 0\n    edges = np.arange(lo, hi + width / 2, width)\n    hb, _ = np.histogram(d[bonded], bins=edges)\n    hn, _ = np.histogram(d[~bonded], bins=edges)\n    return {\"lo\": lo, \"width\": width, \"bonded\": hb.tolist(), \"other\": hn.tolist(), \"cutoffs\": cuts,\n            \"pairs\": sorted(set(names.values()))}\n\n\n# ---------------------------------------------------------------- exports\ndef _num(i, base):\n    return i + base\n\n\ndef export_files(res: dict, stem: str = \"molecule\", base: int = 1) -> dict:\n    \"\"\"Text files for download. The adjacency, eigenvalue, k-moment, Wiener and Estrada files keep the\n    layout of the original desktop app; node numbers follow `base` (0 = like the original, 1 = like the file).\"\"\"\n    syms, n, W = res[\"symbols\"], res[\"n\"], res[\"_W\"]\n    out = {}\n    if np.allclose(W, np.rint(W)):\n        out[f\"{stem}_adjacency.csv\"] = \"\\n\".join(\",\".join(str(int(v)) for v in row) for row in np.rint(W)) + \"\\n\"\n    else:\n        out[f\"{stem}_adjacency.csv\"] = \"\\n\".join(\",\".join(f\"{v:.6g}\" for v in row) for row in W) + \"\\n\"\n    out[f\"{stem}_eigenvalues.csv\"] = \"\\n\".join(f\"{v:.18e}\" for v in res[\"spectrum\"][\"eigenvalues\"]) + \"\\n\"\n    out[f\"{stem}_k_moment.csv\"] = \"k,mu_k\\n\" + \"\\n\".join(\n        f\"{k},{'' if m is None else f'{m:.18e}'}\" for k, m in enumerate(res[\"spectrum\"][\"moments\"], 1)) + \"\\n\"\n    g = res[\"graphs\"]\n    out[f\"{stem}_wiener.csv\"] = (\"graph_type,nodes,edges,wiener\\n\"\n                                 f\"full_with_H,{g['full']['nodes']},{g['full']['edges']},{g['full']['wiener']:.0f}\\n\"\n                                 f\"H_suppressed,{g['heavy']['nodes']},{g['heavy']['edges']},{g['heavy']['wiener']:.0f}\\n\")\n    rows = [\"graph_type,total_EE,node,element,Z,subgraph_centrality\"]\n    for i in range(n):\n        rows.append(f\"full_with_H,{g['full']['estrada']:.12f},{_num(i, base)},{syms[i]},{res['Z'][i]},{res['centrality_full'][i]:.12f}\")\n    for i in res[\"heavy\"]:\n        rows.append(f\"H_suppressed,{g['heavy']['estrada']:.12f},{_num(i, base)},{syms[i]},{res['Z'][i]},{res['centrality_heavy'][i]:.12f}\")\n    out[f\"{stem}_estrada.csv\"] = \"\\n\".join(rows) + \"\\n\"\n    rows = [\"atom_i,atom_j,element_i,element_j,distance_A,cutoff_A,source\"]\n    for i, j, d, c, src in res[\"bonds\"]:\n        rows.append(f\"{_num(i, base)},{_num(j, base)},{syms[i]},{syms[j]},{d:.4f},{c:.4f},{src}\")\n    out[f\"{stem}_bonds.csv\"] = \"\\n\".join(rows) + \"\\n\"\n    out[f\"{stem}_adjacency_list.txt\"] = adjacency_list_text(res, base)\n    out[f\"{stem}_report.txt\"] = report_text(res, base)\n    return out\n\n\ndef adjacency_list_text(res: dict, base: int = 1) -> str:\n    A, syms = res[\"_A\"], res[\"symbols\"]\n    lines = []\n    for i in range(res[\"n\"]):\n        nb = [f\"{syms[j]}{_num(j, base)}\" for j in np.nonzero(A[i])[0]]\n        lines.append(f\"{syms[i]}{_num(i, base)}: {' '.join(nb) if nb else '(none)'}\")\n    return \"\\n\".join(lines) + \"\\n\"\n\n\ndef report_text(res: dict, base: int = 1) -> str:\n    s, sp, g = res[\"settings\"], res[\"spectrum\"], res[\"graphs\"]\n    rule = (f\"covalent radii (Cordero 2008), bonded if d <= {s['scale']:.2f} x (r_a + r_b)\" if s[\"rule\"] == \"radii\"\n            else \"pair table \" + \", \".join(f\"{k} {v}\" for k, v in s[\"table\"].items())\n            + f\"; other pairs {s['fallback']:.2f} x (r_a + r_b)\")\n    L = [\n        f\"XYZ Graph Studio report\",\n        f\"Molecule: {res['formula']}   atoms: {res['n']}   bonds: {len(res['bonds'])}   fragments: {len(res['fragments'])}\",\n        f\"Comment line: {res['comment']}\",\n        f\"Bond rule: {rule}\",\n        f\"Bonds added by hand: {len(res['added'])}   removed by hand: {len(res['removed'])}\",\n        f\"Atom numbering in this report starts at {base}.\",\n        \"\",\n        \"Bond check:\",\n    ]\n    if res[\"issues\"]:\n        L += [f\"  {res['symbols'][x['i']]}{x['i'] + base} {x['text']}\" for x in res[\"issues\"]]\n    else:\n        L.append(\"  every atom has a usual number of bonds\")\n    L += [\n        \"\",\n        f\"Matrix W = A + diag({'Z' if s['diagonal'] == 'Z' else '0'})\",\n        f\"  trace(W)                       = {sp['trace']:.6f}\",\n        f\"  sum |lambda_i| of W            = {sp['energy_abs']:.10f}\",\n        f\"  sum |lambda_i - trace/n| of W  = {sp['energy_centred']:.10f}\",\n        f\"  graph energy of A (Gutman)     = {res['energy_A']:.10f}\",\n    ]\n    if sp[\"energy_is_trace\"] and s[\"diagonal\"] == \"Z\":\n        L.append(\"  note: all eigenvalues of W are >= 0, so sum |lambda| equals trace(W) = sum of Z and does not depend on the bonds.\")\n    L += [\"\", f\"{'':24}{'full graph':>18}{'H-suppressed':>18}\"]\n    for key, label, fmt in ((\"nodes\", \"nodes\", \"{:.0f}\"), (\"edges\", \"edges\", \"{:.0f}\"), (\"fragments\", \"fragments\", \"{:.0f}\"),\n                            (\"wiener\", \"Wiener index\", \"{:.0f}\"), (\"estrada\", \"Estrada index\", \"{:.10f}\"),\n                            (\"zagreb1\", \"first Zagreb M1\", \"{:.0f}\"), (\"zagreb2\", \"second Zagreb M2\", \"{:.0f}\"),\n                            (\"randic\", \"Randic index\", \"{:.10f}\")):\n        L.append(f\"  {label:<22}{fmt.format(g['full'][key]):>18}{fmt.format(g['heavy'][key]):>18}\")\n    L.append(\"\")\n    L.append(\"The Wiener, Zagreb and Randic indices are usually reported for the H-suppressed graph.\")\n    return \"\\n\".join(L) + \"\\n\"\n", "bridge.py": "\"\"\"\nbridge.py — connects the web page to graph_core. Every function takes plain strings and returns JSON text.\n\"\"\"\nimport json\nimport os\n\nimport numpy as np\n\nimport graph_core as gc\n\nHERE = os.path.dirname(os.path.abspath(__file__))\nEXAMPLES = {\"benzene\": \"benzene.xyz\", \"cubane\": \"cubane.xyz\", \"adamantane\": \"adamantane.xyz\"}\n_state = {\"frames\": None, \"name\": None, \"cache\": None}\n\n\ndef _ok(**kw):\n    return json.dumps({\"ok\": True, **kw}, allow_nan=False, default=_default)\n\n\ndef _err(msg):\n    return json.dumps({\"ok\": False, \"error\": str(msg)})\n\n\ndef _default(o):\n    if isinstance(o, (np.integer,)):\n        return int(o)\n    if isinstance(o, (np.floating,)):\n        return float(o)\n    if isinstance(o, np.ndarray):\n        return o.tolist()\n    if isinstance(o, tuple):\n        return list(o)\n    raise TypeError(type(o))\n\n\ndef options():\n    return _ok(defaults=gc.DEFAULT_SETTINGS, legacy=gc.LEGACY_PAIR_TABLE, radii=gc.COVALENT_RADII,\n               default_radius=gc.DEFAULT_RADIUS, examples=list(EXAMPLES))\n\n\ndef load(name, text):\n    try:\n        frames = gc.parse_xyz(text)\n    except Exception as e:  # noqa: BLE001\n        return _err(e)\n    _state.update(frames=frames, name=name, cache=None)\n    return _ok(name=name, frames=[{\"comment\": f.comment, \"n\": f.n, \"formula\": gc.formula(f.symbols)} for f in frames])\n\n\ndef example(key):\n    path = os.path.join(HERE, EXAMPLES[key])\n    with open(path, encoding=\"utf-8\") as fh:\n        return load(EXAMPLES[key], fh.read())\n\n\ndef _result(frame, settings_json):\n    frames = _state[\"frames\"]\n    if not frames:\n        raise ValueError(\"Open an .xyz file first.\")\n    frame = max(0, min(int(frame), len(frames) - 1))\n    settings = gc.merged_settings(json.loads(settings_json or \"{}\"))\n    key = (frame, json.dumps(settings, sort_keys=True))\n    if _state[\"cache\"] and _state[\"cache\"][0] == key:\n        return _state[\"cache\"][1]\n    res = gc.analyse(frames[frame], settings)\n    _state[\"cache\"] = (key, res)\n    return res\n\n\ndef _clean(v):\n    \"\"\"JSON can't hold inf/nan; send None instead.\"\"\"\n    if isinstance(v, float):\n        return v if np.isfinite(v) else None\n    if isinstance(v, dict):\n        return {k: _clean(x) for k, x in v.items()}\n    if isinstance(v, (list, tuple)):\n        return [_clean(x) for x in v]\n    return v\n\n\ndef analyse(frame, settings_json, pair=\"\"):\n    try:\n        res = _result(frame, settings_json)\n        out = {k: v for k, v in res.items() if not k.startswith(\"_\")}\n        out[\"histogram\"] = gc.histogram(res, res[\"settings\"], pair or None)\n        return _ok(**_clean(out))\n    except Exception as e:  # noqa: BLE001\n        return _err(e)\n\n\ndef histogram(frame, settings_json, pair=\"\"):\n    try:\n        res = _result(frame, settings_json)\n        return _ok(**_clean(gc.histogram(res, res[\"settings\"], pair or None)))\n    except Exception as e:  # noqa: BLE001\n        return _err(e)\n\n\ndef distances(frame, settings_json, i):\n    \"\"\"Distances from atom i to every other atom (for the atom inspector).\"\"\"\n    try:\n        res = _result(frame, settings_json)\n        i = int(i)\n        return _ok(d=res[\"_D\"][i].tolist(), cut=res[\"_C\"][i].tolist())\n    except Exception as e:  # noqa: BLE001\n        return _err(e)\n\n\ndef exports(frame, settings_json, stem, base):\n    try:\n        res = _result(frame, settings_json)\n        files = gc.export_files(res, stem or \"molecule\", int(base))\n        return _ok(files=files)\n    except Exception as e:  # noqa: BLE001\n        return _err(e)\n", "benzene.xyz": "12\nBenzene C6H6 (ideal D6h, C-C 1.39 A, C-H 1.09 A)\nC      1.39000000     0.00000000     0.00000000\nC      0.69500000     1.20377531     0.00000000\nC     -0.69500000     1.20377531     0.00000000\nC     -1.39000000     0.00000000     0.00000000\nC     -0.69500000    -1.20377531     0.00000000\nC      0.69500000    -1.20377531     0.00000000\nH      2.48000000     0.00000000     0.00000000\nH      1.24000000     2.14774300     0.00000000\nH     -1.24000000     2.14774300     0.00000000\nH     -2.48000000     0.00000000     0.00000000\nH     -1.24000000    -2.14774300     0.00000000\nH      1.24000000    -2.14774300     0.00000000\n", "cubane.xyz": "16\nCubane C8H8 (ideal Oh, C-C 1.57 A, C-H 1.09 A)\nC      0.78500000     0.78500000     0.78500000\nC      0.78500000     0.78500000    -0.78500000\nC      0.78500000    -0.78500000     0.78500000\nC      0.78500000    -0.78500000    -0.78500000\nC     -0.78500000     0.78500000     0.78500000\nC     -0.78500000     0.78500000    -0.78500000\nC     -0.78500000    -0.78500000     0.78500000\nC     -0.78500000    -0.78500000    -0.78500000\nH      1.41431179     1.41431179     1.41431179\nH      1.41431179     1.41431179    -1.41431179\nH      1.41431179    -1.41431179     1.41431179\nH      1.41431179    -1.41431179    -1.41431179\nH     -1.41431179     1.41431179     1.41431179\nH     -1.41431179     1.41431179    -1.41431179\nH     -1.41431179    -1.41431179     1.41431179\nH     -1.41431179    -1.41431179    -1.41431179\n", "adamantane.xyz": "26\nAdamantane C10H16 (ideal Td, C-C 1.54 A, C-H 1.09 A)\nC      0.88911941     0.88911941     0.88911941\nC      0.88911941    -0.88911941    -0.88911941\nC     -0.88911941     0.88911941    -0.88911941\nC     -0.88911941    -0.88911941     0.88911941\nC      1.77823883     0.00000000     0.00000000\nC     -1.77823883     0.00000000     0.00000000\nC      0.00000000     1.77823883     0.00000000\nC      0.00000000    -1.77823883     0.00000000\nC      0.00000000     0.00000000     1.77823883\nC      0.00000000     0.00000000    -1.77823883\nH      1.51843121     1.51843121     1.51843121\nH      1.51843121    -1.51843121    -1.51843121\nH     -1.51843121     1.51843121    -1.51843121\nH     -1.51843121    -1.51843121     1.51843121\nH      2.40756010    -0.62930705     0.62930705\nH      2.40756010     0.62930705    -0.62930705\nH     -2.40756010    -0.62930705    -0.62930705\nH     -2.40756010     0.62930705     0.62930705\nH      0.62930705     2.40756010    -0.62930705\nH     -0.62930705     2.40756010     0.62930705\nH      0.62930705    -2.40756010     0.62930705\nH     -0.62930705    -2.40756010    -0.62930705\nH     -0.62930705     0.62930705     2.40756010\nH      0.62930705    -0.62930705     2.40756010\nH     -0.62930705    -0.62930705    -2.40756010\nH      0.62930705     0.62930705    -2.40756010\n"};
+const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
+const STORE_KEY = "xyz-graph-studio-v1";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ---------------- numbers ---------------- */
+function trimNum(s) { let [m, e] = s.split("e"); if (m.includes(".")) m = m.replace(/0+$/, "").replace(/\.$/, ""); return e !== undefined ? `${m}e${e}` : m; }
+const sig = (v, d = 5) => (v === null || v === undefined || !isFinite(v)) ? "–" : trimNum(Number(v).toPrecision(d));
+const fix = (v, d = 3) => (v === null || v === undefined || !isFinite(v)) ? "–" : Number(v).toFixed(d);
+const int = (v) => (v === null || v === undefined || !isFinite(v)) ? "–" : Math.round(v).toLocaleString("en-GB");
+const plural = (n, one, many) => `${n.toLocaleString("en-GB")} ${n === 1 ? one : (many || one + "s")}`;
+
+/* ---------------- element colours (Jmol) and sizes ---------------- */
+const CPK = { H: "#FFFFFF", He: "#D9FFFF", Li: "#CC80FF", Be: "#C2FF00", B: "#FFB5B5", C: "#909090", N: "#3050F8", O: "#FF0D0D", F: "#90E050", Ne: "#B3E3F5",
+  Na: "#AB5CF2", Mg: "#8AFF00", Al: "#BFA6A6", Si: "#F0C8A0", P: "#FF8000", S: "#FFFF30", Cl: "#1FF01F", Ar: "#80D1E3", K: "#8F40D4", Ca: "#3DFF00",
+  Sc: "#E6E6E6", Ti: "#BFC2C7", V: "#A6A6AB", Cr: "#8A99C7", Mn: "#9C7AC7", Fe: "#E06633", Co: "#F090A0", Ni: "#50D050", Cu: "#C88033", Zn: "#7D80B0",
+  Ga: "#C28F8F", Ge: "#668F8F", As: "#BD80E3", Se: "#FFA100", Br: "#A62929", Kr: "#5CB8D1", Rb: "#702EB0", Sr: "#00FF00", Y: "#94FFFF", Zr: "#94E0E0",
+  Nb: "#73C2C9", Mo: "#54B5B5", Tc: "#3B9E9E", Ru: "#248F8F", Rh: "#0A7D8C", Pd: "#006985", Ag: "#C0C0C0", Cd: "#FFD98F", In: "#A67573", Sn: "#668080",
+  Sb: "#9E63B5", Te: "#D47A00", I: "#940094", Xe: "#429EB0", Cs: "#57178F", Ba: "#00C900", La: "#70D4FF", Hf: "#4DC2FF", Ta: "#4DA6FF", W: "#2194D6",
+  Re: "#267DAB", Os: "#266696", Ir: "#175487", Pt: "#D0D0E0", Au: "#FFD123", Hg: "#B8B8D0", Tl: "#A6544D", Pb: "#575961", Bi: "#9E4FB5", U: "#008FFF" };
+const colorOf = (s) => CPK[s] || "#D7A6E0";
+let RADII = {}, DEFAULT_R = 1.5;
+const covR = (s) => RADII[s] ?? DEFAULT_R;
+const drawR = (s) => s === "H" ? 0.26 : 0.2 + 0.26 * Math.min(covR(s), 1.6);
+
+function shade(hex, f) {   // f > 0 lightens towards white, f < 0 darkens
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  if (f > 0) { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; } else { r *= 1 + f; g *= 1 + f; b *= 1 + f; }
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+/* ---------------- small UI helpers ---------------- */
+let toastTimer = null;
+function toast(msg, ms = 3800) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms); }
+function download(name, data, type = "text/plain") {
+  const blob = data instanceof Blob ? data : new Blob([data], { type });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 600);
+}
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+/* ---------------- Python runner (a background worker, or the page itself as a fallback) ---------------- */
+const WORKER_SRC = `
+let py = null, bridge = null;
+self.onmessage = async (e) => {
+  const { id, cmd, args } = e.data;
+  try {
+    if (cmd === "init") {
+      importScripts(args.url + "pyodide.js");
+      self.postMessage({ progress: "Downloading Python…" });
+      py = await loadPyodide({ indexURL: args.url });
+      self.postMessage({ progress: "Loading NumPy…" });
+      await py.loadPackage(["numpy"]);
+      py.runPython("import sys, os; os.makedirs('/home/pyodide/xgs', exist_ok=True); sys.path.insert(0, '/home/pyodide/xgs')");
+      for (const [n, s] of Object.entries(args.files)) py.FS.writeFile('/home/pyodide/xgs/' + n, s);
+      bridge = py.pyimport("bridge");
+      self.postMessage({ id, ok: true, result: null });
+    } else {
+      self.postMessage({ id, ok: true, result: bridge[cmd](...args) });
+    }
+  } catch (err) { self.postMessage({ id, ok: false, error: String((err && err.message) || err) }); }
+};`;
+const runner = {
+  mode: null, worker: null, seq: 0, pending: {}, bridge: null,
+  async init(onProgress) {
+    if (!window.__XGS_NO_WORKER && typeof Worker !== "undefined") {
+      try {
+        this.worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" })));
+        this.worker.onmessage = (e) => {
+          const d = e.data;
+          if (d.progress) return onProgress(d.progress);
+          const p = this.pending[d.id]; if (!p) return; delete this.pending[d.id];
+          d.ok ? p.res(d.result) : p.rej(new Error(d.error));
+        };
+        this.worker.onerror = (e) => { Object.values(this.pending).forEach((p) => p.rej(new Error(e.message || "worker error"))); this.pending = {}; };
+        this.mode = "worker";
+        await this.send("init", { url: PYODIDE_URL, files: PY_FILES });
+        return;
+      } catch (e) { if (this.worker) this.worker.terminate(); this.worker = null; console.warn("Worker failed, running Python in the page:", e); }
+    }
+    this.mode = "page";
+    if (typeof loadPyodide !== "function") {
+      await new Promise((res, rej) => { const s = document.createElement("script"); s.src = PYODIDE_URL + "pyodide.js"; s.onload = res; s.onerror = () => rej(new Error("couldn’t download Pyodide")); document.head.append(s); });
+    }
+    onProgress("Downloading Python…");
+    const py = await loadPyodide({ indexURL: PYODIDE_URL });
+    onProgress("Loading NumPy…"); await py.loadPackage(["numpy"]);
+    py.runPython("import sys, os; os.makedirs('/home/pyodide/xgs', exist_ok=True); sys.path.insert(0, '/home/pyodide/xgs')");
+    for (const [n, s] of Object.entries(PY_FILES)) py.FS.writeFile("/home/pyodide/xgs/" + n, s);
+    this.bridge = py.pyimport("bridge");
+  },
+  send(cmd, args) { return new Promise((res, rej) => { const id = ++this.seq; this.pending[id] = { res, rej }; this.worker.postMessage({ id, cmd, args }); }); },
+  async call(cmd, ...args) {
+    if (this.mode === "worker") return JSON.parse(await this.send(cmd, args));
+    await new Promise((r) => setTimeout(r, 10));
+    return JSON.parse(this.bridge[cmd](...args));
+  },
+};
+
+/* ---------------- state ---------------- */
+let DEFAULTS = null, LEGACY = null, ready = false, queued = null;
+let state = { settings: null, base: 1, tab: "bonds", pair: "", view: { h: true, labels: false, near: true }, graphH: false, graphLayout: "spring", matrixView: "map", centralityGraph: "heavy" };
+let file = null;          // { name, text, frames: [...], frame }
+let res = null;           // latest analysis
+let sel = null;           // selected atom index
+let anSeq = 0;
+
+function save() {
+  try {
+    const keep = { ...state, file: file && file.text.length < 600000 ? { name: file.name, text: file.text, frame: file.frame } : null };
+    localStorage.setItem(STORE_KEY, JSON.stringify(keep));
+  } catch (e) { /* storage blocked or full: the app still works */ }
+}
+function restore() {
+  try { const s = JSON.parse(localStorage.getItem(STORE_KEY) || "null"); if (s) return s; } catch (e) { /* ignore */ }
+  return null;
+}
+const lab = (i) => res ? `${res.symbols[i]}${i + state.base}` : String(i + state.base);
+const pairLabel = (p) => p.replace("-", "–");
+
+/* ---------------- boot ---------------- */
+function setEngine(kind, text) {
+  $("engineDot").className = "dot" + (kind === "ready" ? " ready" : kind === "fail" ? " fail" : "");
+  $("engineText").textContent = text;
+}
+async function boot() {
+  const saved = restore();
+  if (saved) Object.assign(state, { ...saved, file: undefined, view: { ...state.view, ...(saved.view || {}) } });
+  renderTabs(); renderBody();
+  const timer = setTimeout(() => { if (!ready) setEngine("fail", "Python is taking unusually long. Check your connection, then reload the page."); }, 90000);
+  try {
+    await runner.init((t) => setEngine("busy", t));
+    const o = await runner.call("options");
+    DEFAULTS = o.defaults; LEGACY = o.legacy; RADII = o.radii; DEFAULT_R = o.default_radius;
+    state.settings = { ...DEFAULTS, ...(state.settings || {}) };
+    ready = true; clearTimeout(timer);
+    setEngine("ready", runner.mode === "worker" ? "Python ready (runs in your browser, nothing is uploaded)" : "Python ready (runs in this page, nothing is uploaded)");
+    document.querySelectorAll("[data-ex]").forEach((b) => (b.disabled = false));
+    if (queued) { const q = queued; queued = null; await openText(q.name, q.text, 0, true); }
+    else if (saved && saved.file) await openText(saved.file.name, saved.file.text, saved.file.frame || 0, false);
+  } catch (e) {
+    clearTimeout(timer);
+    setEngine("fail", `Python couldn’t start (${e.message}). Reload the page; if it keeps failing, your network may block cdn.jsdelivr.net.`);
+  }
+}
+
+/* ---------------- opening files ---------------- */
+async function readFile(f) {
+  const text = await f.text();
+  if (!ready) { queued = { name: f.name, text }; toast("The file will open as soon as Python has started."); $("empty").querySelector("h1").textContent = `Opening ${f.name} once Python is ready…`; return; }
+  await openText(f.name, text, 0, true);
+}
+async function openText(name, text, frame, fresh) {
+  const r = await runner.call("load", name, text);
+  if (!r.ok) { toast(`${name}: ${r.error}`, 7000); return; }
+  if (fresh) { state.settings.add = []; state.settings.remove = []; }
+  file = { name, text, frames: r.frames, frame: Math.min(frame, r.frames.length - 1) };
+  sel = null; mol.reset = true; layoutCache = null;
+  renderFileInfo();
+  await analyse();
+  save();
+}
+async function openExample(key) {
+  if (!ready) return;
+  const r = await runner.call("example", key);
+  if (!r.ok) return toast(r.error);
+  state.settings.add = []; state.settings.remove = [];
+  // keep the file text so a reload restores it
+  file = { name: r.name, text: null, frames: r.frames, frame: 0, example: key };
+  const src = PY_FILES[r.name]; file.text = src || "";
+  sel = null; mol.reset = true; layoutCache = null;
+  renderFileInfo(); await analyse(); save();
+}
+
+/* ---------------- analysis ---------------- */
+async function analyse() {
+  if (!file || !ready) return;
+  const seq = ++anSeq; $("busy").hidden = false;
+  try {
+    const r = await runner.call("analyse", file.frame, JSON.stringify(state.settings), state.pair);
+    if (seq !== anSeq) return;
+    if (!r.ok) { toast(r.error, 6000); return; }
+    const bondsKey = r.bonds.map((b) => b[0] + "-" + b[1]).join(",");
+    if (!res || res.n !== r.n || res._bondsKey !== bondsKey) layoutCache = null;
+    r._bondsKey = bondsKey;
+    r._issueSet = new Map(r.issues.map((x) => [x.i, x]));
+    r._nb = Array.from({ length: r.n }, () => []);
+    r.bonds.forEach(([i, j]) => { r._nb[i].push(j); r._nb[j].push(i); });
+    r._bondSet = new Set(r.bonds.map((b) => b[0] * 100000 + b[1]));
+    res = r;
+    if (sel !== null && sel >= res.n) sel = null;
+    renderStage(); renderTabs(); renderBody(); renderInspector();
+    $("dlBtn").disabled = false;
+  } catch (e) { toast("Something went wrong: " + e.message, 7000); }
+  finally { if (seq === anSeq) $("busy").hidden = true; }
+}
+const reanalyse = debounce(() => { save(); analyse(); }, 260);
+const isBonded = (i, j) => res && res._bondSet.has(Math.min(i, j) * 100000 + Math.max(i, j));
+
+function toggleBond(i, j) {
+  const a = Math.min(i, j), b = Math.max(i, j), s = state.settings;
+  const has = (list) => list.findIndex((p) => p[0] === a && p[1] === b);
+  if (isBonded(a, b)) {
+    const k = has(s.add); if (k >= 0) s.add.splice(k, 1); else s.remove.push([a, b]);
+  } else {
+    const k = has(s.remove); if (k >= 0) s.remove.splice(k, 1); else s.add.push([a, b]);
+  }
+  save(); analyse();
+}
+
+/* ---------------- header and stage text ---------------- */
+function formulaHTML(f) { return esc(f).replace(/(\d+)/g, "<sub>$1</sub>"); }
+function renderFileInfo() {
+  $("fileInfo").hidden = !file; $("empty").hidden = !!file; $("stageTop").hidden = !file; $("stageBottom").hidden = !file;
+  if (!file) return;
+  $("fileName").textContent = file.name;
+  const fr = file.frames[file.frame];
+  $("fileMeta").textContent = fr.comment ? fr.comment.slice(0, 70) : "";
+  $("fileMeta").title = fr.comment || "";
+  $("frames").hidden = file.frames.length < 2;
+  if (file.frames.length > 1) {
+    $("frameSel").innerHTML = file.frames.map((f, k) => `<option value="${k}">Frame ${k + 1} of ${file.frames.length}</option>`).join("");
+    $("frameSel").value = file.frame;
+  }
+}
+function renderStage() {
+  if (!res) return;
+  $("formula").innerHTML = formulaHTML(res.formula);
+  const frags = res.fragments.length;
+  $("counts").textContent = `${plural(res.n, "atom")}, ${plural(res.bonds.length, "bond")}, ${frags === 1 ? "one connected molecule" : plural(frags, "separate piece")}`;
+  const bad = res.issues.length, pill = $("pill");
+  pill.className = "verdict-pill " + (bad ? "bad" : "ok");
+  pill.textContent = bad ? `${plural(bad, "atom")} with unusual bonding` : "Bonding looks right";
+  const counts = {}; res.symbols.forEach((s) => (counts[s] = (counts[s] || 0) + 1));
+  const order = Object.keys(counts).sort((a, b) => (a === "C" ? -1 : b === "C" ? 1 : a === "H" ? -1 : b === "H" ? 1 : a.localeCompare(b)));
+  $("legend").innerHTML = order.map((s) => `<span><i style="background:${colorOf(s)}"></i>${s} ${counts[s]}</span>`).join("")
+    + (state.view.near && res.near.some((p) => !isBonded(p.i, p.j)) ? `<span><span class="near-key"></span>close call, not bonded</span>` : "");
+  mol.draw();
+}
+
+/* =================================================================
+   3D molecule view (canvas, no libraries)
+   ================================================================= */
+const mol = {
+  canvas: $("mol"), R: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], zoom: 1, pan: [0, 0], reset: true, center: [0, 0, 0], size: 1, hover: null, proj: [],
+  orient() {
+    const X = res.coords, n = res.n;
+    const c = [0, 0, 0]; X.forEach((p) => { c[0] += p[0] / n; c[1] += p[1] / n; c[2] += p[2] / n; });
+    this.center = c;
+    let r = 0; X.forEach((p) => { r = Math.max(r, Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2])); });
+    this.size = Math.max(r + 0.8, 1.5);
+    const cov = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    X.forEach((p) => { const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]]; for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) cov[a][b] += d[a] * d[b]; });
+    const { vals, vecs } = jacobi3(cov);
+    const idx = [0, 1, 2].sort((a, b) => vals[b] - vals[a]);
+    let rows = idx.map((k) => [vecs[0][k], vecs[1][k], vecs[2][k]]);
+    const cr = cross(rows[0], rows[1]); rows[2] = cr;
+    this.R = matMul(matMul(rotX(-0.42), rotY(0.5)), rows);
+    this.zoom = 1; this.pan = [0, 0];
+  },
+  draw(target) {
+    const cv = target ? target.canvas : this.canvas, ctx = cv.getContext("2d");
+    const dpr = target ? target.dpr : (window.devicePixelRatio || 1);
+    const w = target ? target.w : cv.clientWidth, h = target ? target.h : cv.clientHeight;
+    if (!target) { if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); } }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    if (target && target.bg) { ctx.fillStyle = target.bg; ctx.fillRect(0, 0, w, h); }
+    if (!res) return;
+    if (this.reset) { this.orient(); this.reset = false; }
+    const showH = state.view.h, R = this.R, c = this.center;
+    const fit = Math.min(w, h * 1.1) / (2.15 * this.size) * this.zoom, cam = this.size * 5;
+    const P = res.coords.map((p) => {
+      const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+      const v = [R[0][0] * d[0] + R[0][1] * d[1] + R[0][2] * d[2], R[1][0] * d[0] + R[1][1] * d[1] + R[1][2] * d[2], R[2][0] * d[0] + R[2][1] * d[1] + R[2][2] * d[2]];
+      const k = cam / (cam - v[2]);
+      return { x: w / 2 + this.pan[0] + v[0] * fit * k, y: h / 2 + this.pan[1] - v[1] * fit * k, z: v[2], k };
+    });
+    this.proj = P; this.fit = fit;
+    const vis = (i) => showH || res.symbols[i] !== "H";
+    const items = [];
+    res.symbols.forEach((s, i) => { if (vis(i)) items.push({ t: 0, i, z: P[i].z }); });
+    res.bonds.forEach(([i, j, , , src]) => { if (vis(i) && vis(j)) items.push({ t: 1, i, j, z: (P[i].z + P[j].z) / 2 - 0.01, src }); });
+    items.sort((a, b) => a.z - b.z);
+    const selNb = sel !== null ? new Set(res._nb[sel]) : null;
+    const outline = cssVar("--ink"), accent = cssVar("--accent"), bad = cssVar("--bad"), warn = cssVar("--warn");
+    for (const it of items) {
+      if (it.t === 1) {
+        const a = P[it.i], b = P[it.j], lw = Math.max(1.6, 0.14 * fit * (a.k + b.k) / 2);
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, hl = sel !== null && (it.i === sel || it.j === sel);
+        ctx.lineCap = "round";
+        ctx.strokeStyle = hl ? accent : "rgba(20,30,35,.55)"; ctx.lineWidth = lw + (hl ? 3.2 : 1.6);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = shade(colorOf(res.symbols[it.i]), -0.08); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mx, my); ctx.stroke();
+        ctx.strokeStyle = shade(colorOf(res.symbols[it.j]), -0.08); ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(b.x, b.y); ctx.stroke();
+        if (it.src === "added") { ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); }
+      } else {
+        const p = P[it.i], s = res.symbols[it.i], r = Math.max(2.5, drawR(s) * fit * p.k), col = colorOf(s);
+        const g = ctx.createRadialGradient(p.x - r * 0.38, p.y - r * 0.42, r * 0.08, p.x, p.y, r);
+        g.addColorStop(0, shade(col, 0.75)); g.addColorStop(0.55, col); g.addColorStop(1, shade(col, -0.42));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(10,20,25,.45)"; ctx.stroke();
+        if (res._issueSet.has(it.i)) { ctx.strokeStyle = bad; ctx.lineWidth = 2.2; ctx.setLineDash([3, 2.5]); ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+        if (it.i === sel) { ctx.strokeStyle = accent; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
+        else if (selNb && selNb.has(it.i)) { ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+        if (it.i === this.hover && it.i !== sel) { ctx.strokeStyle = outline; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+      }
+    }
+    if (state.view.near) {
+      ctx.strokeStyle = warn; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+      for (const q of res.near) {
+        if (isBonded(q.i, q.j) || !vis(q.i) || !vis(q.j)) continue;
+        ctx.beginPath(); ctx.moveTo(P[q.i].x, P[q.i].y); ctx.lineTo(P[q.j].x, P[q.j].y); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    if (state.view.labels || sel !== null) {
+      ctx.font = `500 ${res.n > 150 ? 10 : 11}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const halo = cssVar("--halo");
+      const which = state.view.labels ? res.symbols.map((_, i) => i) : [sel, ...res._nb[sel]];
+      for (const i of which) {
+        if (!vis(i)) continue;
+        const p = P[i], t = lab(i), r = Math.max(2.5, drawR(res.symbols[i]) * fit * p.k);
+        const y = p.y - r - 8;
+        ctx.lineWidth = 3.5; ctx.strokeStyle = halo; ctx.strokeText(t, p.x, y);
+        ctx.fillStyle = i === sel ? accent : outline; ctx.fillText(t, p.x, y);
+      }
+    }
+  },
+  hit(x, y) {
+    if (!res) return null;
+    let best = null, bz = -Infinity;
+    this.proj.forEach((p, i) => {
+      if (!state.view.h && res.symbols[i] === "H") return;
+      const r = Math.max(5, drawR(res.symbols[i]) * this.fit * p.k);
+      if ((x - p.x) ** 2 + (y - p.y) ** 2 <= r * r && p.z > bz) { bz = p.z; best = i; }
+    });
+    return best;
+  },
+};
+function jacobi3(S) {
+  const a = S.map((r) => r.slice()), v = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 50; sweep++) {
+    let off = Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]); if (off < 1e-12) break;
+    for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+      if (Math.abs(a[p][q]) < 1e-15) continue;
+      const th = (a[q][q] - a[p][p]) / (2 * a[p][q]), t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1)), c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < 3; k++) { const akp = a[k][p], akq = a[k][q]; a[k][p] = c * akp - s * akq; a[k][q] = s * akp + c * akq; }
+      for (let k = 0; k < 3; k++) { const apk = a[p][k], aqk = a[q][k]; a[p][k] = c * apk - s * aqk; a[q][k] = s * apk + c * aqk; }
+      for (let k = 0; k < 3; k++) { const vkp = v[k][p], vkq = v[k][q]; v[k][p] = c * vkp - s * vkq; v[k][q] = s * vkp + c * vkq; }
+    }
+  }
+  return { vals: [a[0][0], a[1][1], a[2][2]], vecs: v };
+}
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const matMul = (A, B) => A.map((r) => [0, 1, 2].map((j) => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+const rotX = (t) => [[1, 0, 0], [0, Math.cos(t), -Math.sin(t)], [0, Math.sin(t), Math.cos(t)]];
+const rotY = (t) => [[Math.cos(t), 0, Math.sin(t)], [0, 1, 0], [-Math.sin(t), 0, Math.cos(t)]];
+
+(function wireCanvas() {
+  const cv = mol.canvas; let drag = null;
+  const pos = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.addEventListener("pointerdown", (e) => { if (!res) return; cv.setPointerCapture(e.pointerId); drag = { x: e.clientX, y: e.clientY, moved: 0, pan: e.shiftKey || e.button === 2 }; cv.classList.add("dragging"); });
+  cv.addEventListener("pointermove", (e) => {
+    if (!res) return;
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
+      if (drag.pan) { mol.pan[0] += dx; mol.pan[1] += dy; } else mol.R = matMul(matMul(rotY(dx * 0.009), rotX(dy * 0.009)), mol.R);
+      $("tip").hidden = true; mol.draw(); return;
+    }
+    const [x, y] = pos(e), i = mol.hit(x, y);
+    if (i !== mol.hover) { mol.hover = i; mol.draw(); }
+    showTip(i, x, y);
+  });
+  const end = (e) => {
+    if (!drag) return;
+    const wasClick = drag.moved < 5; drag = null; cv.classList.remove("dragging");
+    if (wasClick) { const [x, y] = pos(e); select(mol.hit(x, y)); }
+  };
+  cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", () => { drag = null; cv.classList.remove("dragging"); });
+  cv.addEventListener("pointerleave", () => { if (!drag) { mol.hover = null; $("tip").hidden = true; mol.draw(); } });
+  cv.addEventListener("wheel", (e) => { if (!res) return; e.preventDefault(); mol.zoom = Math.min(12, Math.max(0.3, mol.zoom * Math.exp(-e.deltaY * 0.0015))); mol.draw(); }, { passive: false });
+  cv.addEventListener("dblclick", () => { if (!res) return; mol.orient(); mol.draw(); });
+  cv.addEventListener("contextmenu", (e) => e.preventDefault());
+  new ResizeObserver(() => mol.draw()).observe(cv);
+})();
+function showTip(i, x, y) {
+  const tip = $("tip");
+  if (i === null) { tip.hidden = true; return; }
+  const X = res.coords, nb = res._nb[i];
+  const iss = res._issueSet.get(i);
+  tip.innerHTML = `<b>${lab(i)}</b>, ${plural(nb.length, "bond")}${iss ? `<br>${esc(iss.text)}` : ""}<br>` +
+    nb.slice(0, 8).map((j) => `${lab(j)} ${fix(dist(X[i], X[j]), 3)} Å`).join("<br>");
+  tip.hidden = false;
+  const st = $("stage").getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(x + 14, st.width - tw - 8) + "px"; tip.style.top = Math.min(y + 14, st.height - th - 8) + "px";
+}
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/* ---------------- selection and the atom inspector ---------------- */
+function select(i) {
+  sel = (i === null || i === sel) ? null : i;
+  mol.draw(); renderInspector();
+  if (["graph", "atoms", "matrix", "indices"].includes(state.tab)) renderBody(true);
+}
+function renderInspector() {
+  const box = $("inspector");
+  if (sel === null || !res) { box.hidden = true; return; }
+  const X = res.coords, s = res.symbols, nb = res._nb[sel];
+  const cut = (j) => { const t = state.settings; const key = [s[sel], s[j]];
+    if (t.rule === "table") { const v = t.table[`${key[0]}-${key[1]}`] ?? t.table[`${key[1]}-${key[0]}`]; if (v !== undefined) return +v; return t.fallback * (covR(key[0]) + covR(key[1])); }
+    return t.scale * (covR(key[0]) + covR(key[1])); };
+  const others = res.symbols.map((_, j) => j).filter((j) => j !== sel && !nb.includes(j)).map((j) => ({ j, d: dist(X[sel], X[j]) })).sort((a, b) => a.d - b.d).slice(0, 3);
+  const iss = res._issueSet.get(sel);
+  const row = (j, d, bonded) => `<tr><td>${lab(j)}</td><td class="mono">${fix(d, 3)} Å <span class="muted">/ ${fix(cut(j), 3)}</span></td><td><button class="btn small" data-tog="${j}">${bonded ? "Remove bond" : "Add bond"}</button></td></tr>`;
+  box.innerHTML = `<h3><span>${lab(sel)}</span><button class="x" aria-label="Close" data-close>×</button></h3>
+    <div class="sub">${s[sel]}, Z = ${res.Z[sel]}, ${plural(nb.length, "bond")}${iss ? `. <span style="color:var(--bad)">${esc(iss.text)}</span>` : ""}</div>
+    <table><tbody>
+      <tr><td class="group" colspan="3">Bonded to (distance / cutoff)</td></tr>
+      ${nb.length ? nb.map((j) => row(j, dist(X[sel], X[j]), true)).join("") : `<tr><td colspan="3" class="muted">Nothing</td></tr>`}
+      <tr><td class="group" colspan="3">Nearest atoms without a bond</td></tr>
+      ${others.map((o) => row(o.j, o.d, false)).join("")}
+    </tbody></table>`;
+  box.hidden = false;
+}
+$("inspector").addEventListener("click", (e) => {
+  if (e.target.closest("[data-close]")) return select(null);
+  const b = e.target.closest("[data-tog]"); if (b) toggleBond(sel, +b.dataset.tog);
+});
+
+/* =================================================================
+   Tool panel
+   ================================================================= */
+const TABS = [["bonds", "Bonds"], ["graph", "Graph"], ["matrix", "Matrix"], ["spectrum", "Spectrum"], ["indices", "Indices"], ["atoms", "Atoms"]];
+function renderTabs() {
+  $("tabs").innerHTML = TABS.map(([k, t]) => `<button role="tab" aria-selected="${state.tab === k}" data-tab="${k}">${t}${k === "bonds" && res && res.issues.length ? `<span class="n">${res.issues.length}</span>` : ""}</button>`).join("");
+}
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (!b) return; state.tab = b.dataset.tab; save(); renderTabs(); renderBody(); $("body").scrollTop = 0; });
+function renderBody(keepScroll) {
+  const body = $("body"), top = body.scrollTop;
+  if (!res) {
+    body.innerHTML = `<p class="note">${ready ? "Open an .xyz file or pick an example to fill this panel." : "This panel fills in once Python has started and a file is open."}</p>`;
+    return;
+  }
+  ({ bonds: renderBonds, graph: renderGraph, matrix: renderMatrix, spectrum: renderSpectrum, indices: renderIndices, atoms: renderAtoms })[state.tab]();
+  if (keepScroll) body.scrollTop = top;
+}
+
+/* ---------------- Bonds tab ---------------- */
+function renderBonds() {
+  const s = state.settings, bad = res.issues;
+  const frag = res.fragments.length;
+  const verdict = bad.length
+    ? `<div class="verdict bad"><strong>${plural(bad.length, "atom")} ${bad.length === 1 ? "has" : "have"} an unusual number of bonds</strong>
+        <p>Every number computed from this graph will be off until these are fixed. Usually a cutoff is too short; check the close calls below.</p>
+        <ul class="issues">${bad.slice(0, 200).map((x) => `<li><button class="link atom" data-sel="${x.i}">${lab(x.i)}</button><span>${esc(x.text)}</span></li>`).join("")}</ul></div>`
+    : `<div class="verdict ok"><strong>Every atom has a usual number of bonds</strong>
+        <p>${plural(res.bonds.length, "bond")} found, ${frag === 1 ? "and they join all atoms into one molecule" : `in ${plural(frag, "separate piece")}`}.${res.overlaps.length ? ` Note: ${plural(res.overlaps.length, "pair")} of atoms sit closer than 0.5 Å, which looks like a duplicated atom.` : ""}</p></div>`;
+  const pairs = res.histogram.pairs;
+  const near = res.near;
+  const hand = [...s.add.map((p) => ({ p, kind: "added" })), ...s.remove.map((p) => ({ p, kind: "removed" }))];
+  $("body").innerHTML = `
+    <section>${verdict}</section>
+    <section>
+      <div class="row space"><h2>Bond lengths</h2>
+        <select id="pairSel" aria-label="Atom pair"><option value="">All pairs</option>${pairs.map((p) => `<option value="${p}" ${p === state.pair ? "selected" : ""}>${pairLabel(p)}</option>`).join("")}</select></div>
+      <p class="note">Every distance between two atoms, up to a little past the cutoff. Bonds should sit well left of the dashed cutoff line, with a clear gap before the non-bonded distances start.</p>
+      <div class="figure"><div id="hist"></div>
+        <div class="key"><span><i style="background:var(--bar)"></i>bonded</span><span><i style="background:var(--bar2)"></i>not bonded</span><span><i style="background:none;border-top:2px dashed var(--accent);height:0;width:16px"></i>cutoff</span></div></div>
+    </section>
+    <section>
+      <h2>How bonds are decided</h2>
+      <div class="rules">
+        <label class="rule"><div class="rule-head"><input type="radio" name="rule" value="radii" ${s.rule === "radii" ? "checked" : ""}>Covalent radii</div>
+          <p>Two atoms are bonded when their distance is at most the factor × (r₁ + r₂), using the covalent radii of Cordero et al. (2008). Works for every element.</p>
+          <div class="controls row"><span class="muted small">Factor</span><input type="number" id="scale" step="0.01" min="0.8" max="2" value="${s.scale}"><span class="muted small">gives C–C ${fix(s.scale * 1.52, 3)} Å, C–H ${fix(s.scale * 1.07, 3)} Å</span></div></label>
+        <label class="rule"><div class="rule-head"><input type="radio" name="rule" value="table" ${s.rule === "table" ? "checked" : ""}>Pair table (the old desktop app)</div>
+          <p>A fixed cutoff for each listed pair; other pairs use the factor × (r₁ + r₂). The old C–C value of 1.55 Å misses long C–C bonds, such as the 1.57 Å bonds of cubane.</p>
+          <div class="controls" ${s.rule === "table" ? "" : "hidden"}>
+            <table class="ptable"><tbody>${Object.entries(s.table).map(([k, v], i) => `<tr><td><input type="text" value="${esc(k)}" data-pk="${i}" aria-label="Pair"></td><td><input type="number" step="0.01" value="${v}" data-pv="${i}" aria-label="Cutoff in Å"></td><td><button class="btn small" data-pdel="${i}" aria-label="Remove row">Remove</button></td></tr>`).join("")}</tbody></table>
+            <div class="row" style="margin-top:8px"><button class="btn small" id="padd">Add pair</button><button class="btn small" id="preset">Reset to the old values</button>
+              <span class="muted small">Other pairs: factor</span><input type="number" id="fallback" step="0.01" value="${s.fallback}"></div>
+          </div></label>
+      </div>
+    </section>
+    <section>
+      <div class="row space"><h2>Close calls</h2><span class="row small muted">Within <input type="number" id="window" step="0.01" min="0.01" max="0.5" value="${s.window}" style="width:70px"> Å of the cutoff</span></div>
+      <p class="note">Pairs whose distance is close to the cutoff, where a small change in the rule flips the result. Check each one by eye.</p>
+      ${near.length ? `<div class="scroll"><table class="data"><thead><tr><th>Pair</th><th class="num">Distance</th><th class="num">Cutoff</th><th>Now</th><th></th></tr></thead><tbody>
+        ${near.slice(0, 300).map((q) => { const b = isBonded(q.i, q.j); return `<tr class="clickable" data-sel="${q.i}"><td>${lab(q.i)}–${lab(q.j)}</td><td class="num">${fix(q.d, 4)}</td><td class="num">${fix(q.cut, 4)}</td><td><span class="tag ${b ? "yes" : "no"}">${b ? "bonded" : "not bonded"}</span></td><td style="text-align:right"><button class="btn small" data-tog="${q.i},${q.j}">${b ? "Remove" : "Add"}</button></td></tr>`; }).join("")}
+        </tbody></table></div>${near.length > 300 ? `<p class="note small">Showing the closest 300 of ${near.length}.</p>` : ""}` : `<p class="muted">No pairs within ${s.window} Å of their cutoff. The rule is not on a knife edge for this molecule.</p>`}
+    </section>
+    <section>
+      <div class="row space"><h2>Bonds you changed by hand</h2>${hand.length ? `<button class="btn small" id="clearHand">Undo all</button>` : ""}</div>
+      ${hand.length ? `<table class="data"><tbody>${hand.map(({ p, kind }) => `<tr><td>${lab(p[0])}–${lab(p[1])}</td><td class="num">${fix(dist(res.coords[p[0]], res.coords[p[1]]), 4)} Å</td><td><span class="tag hand">${kind}</span></td><td style="text-align:right"><button class="btn small" data-undo="${kind},${p[0]},${p[1]}">Undo</button></td></tr>`).join("")}</tbody></table>`
+        : `<p class="muted">None. Click an atom in the molecule, or use the buttons above, to add or remove a bond.</p>`}
+    </section>`;
+  drawHistogram();
+}
+function drawHistogram() {
+  const h = res.histogram, W = 540, H = 210, m = { l: 40, r: 12, t: 30, b: 30 };
+  const tot = h.bonded.map((b, k) => b + h.other[k]), maxC = Math.max(1, ...tot);
+  const lo = h.lo, hi = lo + h.width * tot.length;
+  const X = (d) => m.l + (d - lo) / (hi - lo) * (W - m.l - m.r), Y = (c) => H - m.b - Math.sqrt(c) / Math.sqrt(maxC) * (H - m.t - m.b);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Histogram of interatomic distances">`;
+  const yt = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 1e5, 2e5, 5e5, 1e6].filter((v) => v <= maxC);
+  const ys = yt.length > 4 ? yt.filter((_, k) => k % Math.ceil(yt.length / 4) === 0 || k === yt.length - 1) : yt;
+  ys.forEach((v) => { s += `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l - 6}" y="${Y(v) + 3.5}" text-anchor="end">${v}</text>`; });
+  const step = (hi - lo) > 3 ? 0.5 : (hi - lo) > 1.5 ? 0.25 : 0.1;
+  for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) s += `<line class="axis" x1="${X(t)}" x2="${X(t)}" y1="${H - m.b}" y2="${H - m.b + 4}"/><text x="${X(t)}" y="${H - m.b + 16}" text-anchor="middle">${trimNum(t.toFixed(2))}</text>`;
+  s += `<text x="${(W + m.l) / 2}" y="${H - 1}" text-anchor="middle">distance (Å)</text><text x="12" y="${(H - m.b + m.t) / 2}" transform="rotate(-90 12 ${(H - m.b + m.t) / 2})" text-anchor="middle">pairs (√ scale)</text>`;
+  const bw = (W - m.l - m.r) / tot.length;
+  tot.forEach((t, k) => {
+    if (!t) return;
+    const x = m.l + k * bw, a = lo + k * h.width;
+    const yb = Y(h.bonded[k]), yt2 = Y(t);
+    const title = `<title>${fix(a, 2)}–${fix(a + h.width, 2)} Å: ${t} pair${t > 1 ? "s" : ""}, ${h.bonded[k]} bonded</title>`;
+    if (h.other[k]) s += `<rect x="${x + 0.3}" width="${Math.max(bw - 0.6, 0.8)}" y="${yt2}" height="${(h.bonded[k] ? yb : H - m.b) - yt2}" fill="var(--bar2)">${title}</rect>`;
+    if (h.bonded[k]) s += `<rect x="${x + 0.3}" width="${Math.max(bw - 0.6, 0.8)}" y="${yb}" height="${H - m.b - yb}" fill="var(--bar)">${title}</rect>`;
+  });
+  s += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>`;
+  const cuts = Object.entries(h.cutoffs).filter(([p]) => !state.pair || p === state.pair).sort((a, b) => a[1] - b[1]);
+  let lastX = -1e9, row = 0;
+  cuts.forEach(([p, c]) => {
+    if (c < lo || c > hi) return;
+    const x = X(c); row = (x - lastX < 62) ? row + 1 : 0; lastX = x;
+    const ty = m.t - 18 + (row % 2) * 11;
+    s += `<line class="cut" x1="${x}" x2="${x}" y1="${ty + 3}" y2="${H - m.b}"/><text class="cut-label" x="${x + 3}" y="${ty}">${pairLabel(p)} ${fix(c, 3)}</text>`;
+  });
+  $("hist").innerHTML = s + "</svg>";
+}
+$("body").addEventListener("change", (e) => {
+  const t = e.target, s = state.settings;
+  if (t.name === "rule") { s.rule = t.value; renderBonds(); reanalyse(); }
+  else if (t.id === "scale" && +t.value > 0) { s.scale = +t.value; reanalyse(); }
+  else if (t.id === "fallback" && +t.value > 0) { s.fallback = +t.value; reanalyse(); }
+  else if (t.id === "window" && +t.value > 0) { s.window = +t.value; reanalyse(); }
+  else if (t.dataset.pk !== undefined || t.dataset.pv !== undefined) {
+    const rows = [...$("body").querySelectorAll(".ptable tr")].map((tr) => [tr.querySelector("[data-pk]").value.trim(), +tr.querySelector("[data-pv]").value]);
+    s.table = Object.fromEntries(rows.filter(([k, v]) => /^[A-Za-z]{1,2}-[A-Za-z]{1,2}$/.test(k) && v > 0).map(([k, v]) => [k.split("-").map((x) => x[0].toUpperCase() + x.slice(1).toLowerCase()).join("-"), v]));
+    reanalyse();
+  }
+  else if (t.id === "pairSel") { state.pair = t.value; save(); runner.call("histogram", file.frame, JSON.stringify(s), state.pair).then((h) => { if (h.ok) { res.histogram = h; drawHistogram(); } }); }
+  else if (t.id === "kmax") { s.kmax = Math.max(2, Math.min(200, Math.round(+t.value) || 30)); reanalyse(); }
+  else if (t.id === "gH") { state.graphH = t.checked; layoutCache = null; save(); renderGraph(); }
+});
+$("body").addEventListener("click", (e) => {
+  const s = state.settings, t = e.target;
+  const tog = t.closest("[data-tog]"); if (tog) { e.stopPropagation(); const [i, j] = tog.dataset.tog.split(",").map(Number); return toggleBond(i, j); }
+  const und = t.closest("[data-undo]"); if (und) { const [kind, a, b] = und.dataset.undo.split(","); const list = kind === "added" ? s.add : s.remove; const k = list.findIndex((p) => p[0] === +a && p[1] === +b); if (k >= 0) list.splice(k, 1); save(); return analyse(); }
+  if (t.id === "clearHand") { s.add = []; s.remove = []; save(); return analyse(); }
+  if (t.id === "padd") { s.table = { ...s.table, "X-Y": 1.5 }; renderBonds(); return; }
+  if (t.id === "preset") { s.table = { ...LEGACY }; s.fallback = DEFAULTS.fallback; renderBonds(); return reanalyse(); }
+  const del = t.closest("[data-pdel]"); if (del) { const k = Object.keys(s.table)[+del.dataset.pdel]; const nt = { ...s.table }; delete nt[k]; s.table = nt; renderBonds(); return reanalyse(); }
+  const seg = t.closest("[data-seg]"); if (seg) { const [key, val] = seg.dataset.seg.split(":"); return segChange(key, val); }
+  if (t.id === "relayout") { layoutCache = null; return renderGraph(); }
+  if (t.id === "copyList") { navigator.clipboard?.writeText($("adjList").textContent).then(() => toast("Adjacency list copied.")); return; }
+  const sr = t.closest("[data-sel]"); if (sr) return select(+sr.dataset.sel);
+});
+function segChange(key, val) {
+  if (key === "diag") { state.settings.diagonal = val; reanalyse(); }
+  else if (key === "mview") { state.matrixView = val; save(); renderMatrix(); }
+  else if (key === "cg") { state.centralityGraph = val; save(); renderIndices(); }
+  else if (key === "layout") { state.graphLayout = val; layoutCache = null; save(); renderGraph(); }
+  document.querySelectorAll(`[data-seg^="${key}:"]`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.seg === `${key}:${val}`));
+}
+const seg = (key, cur, opts) => `<div class="seg" role="group">${opts.map(([v, t]) => `<button data-seg="${key}:${v}" aria-pressed="${cur === v}">${t}</button>`).join("")}</div>`;
+
+/* ---------------- Graph tab ---------------- */
+let layoutCache = null;
+function graphLayout() {
+  const nodes = res.symbols.map((_, i) => i).filter((i) => !state.graphH || res.symbols[i] !== "H");
+  const key = `${state.graphH}|${state.graphLayout}|${res._bondsKey}|${res.n}`;
+  if (layoutCache && layoutCache.key === key) return layoutCache;
+  const id = new Map(nodes.map((v, k) => [v, k])), n = nodes.length;
+  const edges = res.bonds.filter(([i, j]) => id.has(i) && id.has(j)).map(([i, j]) => [id.get(i), id.get(j)]);
+  // start from the 3D view's orientation, so the drawing resembles the molecule
+  if (mol.reset) mol.orient();
+  const c = mol.center, R = mol.R;
+  let pos = nodes.map((i) => { const p = res.coords[i], d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]]; return [R[0][0] * d[0] + R[0][1] * d[1] + R[0][2] * d[2], -(R[1][0] * d[0] + R[1][1] * d[1] + R[1][2] * d[2])]; });
+  if (state.graphLayout === "spring" && n > 2 && n <= 700) {
+    // Fruchterman–Reingold
+    let mx = 0; pos.forEach((p) => (mx = Math.max(mx, Math.abs(p[0]), Math.abs(p[1]))));
+    pos = pos.map((p, k) => [p[0] / (mx || 1) + 1e-3 * Math.sin(k * 12.9898), p[1] / (mx || 1) + 1e-3 * Math.cos(k * 78.233)]);
+    const k0 = Math.sqrt(4 / n), iters = n > 300 ? 150 : 300;
+    let temp = 0.2;
+    for (let it = 0; it < iters; it++) {
+      const disp = pos.map(() => [0, 0]);
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        let dx = pos[a][0] - pos[b][0], dy = pos[a][1] - pos[b][1], d2 = dx * dx + dy * dy || 1e-6;
+        const f = k0 * k0 / d2; disp[a][0] += dx * f; disp[a][1] += dy * f; disp[b][0] -= dx * f; disp[b][1] -= dy * f;
+      }
+      for (const [a, b] of edges) {
+        const dx = pos[a][0] - pos[b][0], dy = pos[a][1] - pos[b][1], d = Math.hypot(dx, dy) || 1e-6, f = d / k0;
+        disp[a][0] -= dx * f; disp[a][1] -= dy * f; disp[b][0] += dx * f; disp[b][1] += dy * f;
+      }
+      for (let a = 0; a < n; a++) { const d = Math.hypot(disp[a][0], disp[a][1]) || 1e-9, s = Math.min(d, temp) / d; pos[a][0] += disp[a][0] * s; pos[a][1] += disp[a][1] * s; }
+      temp *= 0.985;
+    }
+  }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  pos.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+  const span = Math.max(x1 - x0, y1 - y0) || 1;
+  pos = pos.map(([x, y]) => [(x - (x0 + x1) / 2) / span, (y - (y0 + y1) / 2) / span]);
+  layoutCache = { key, nodes, edges, pos, aspect: Math.min(1, Math.max(0.55, (y1 - y0) / (x1 - x0 || 1))) };
+  return layoutCache;
+}
+function renderGraph() {
+  const L = graphLayout(), W = 600, H = Math.round(W * Math.max(0.62, L.aspect) + 20), pad = 26;
+  const sc = Math.min(W - 2 * pad, (H - 2 * pad) / Math.max(L.aspect, 0.55));
+  const P = L.pos.map(([x, y]) => [W / 2 + x * sc, H / 2 + y * sc]);
+  const big = L.nodes.length <= 70;
+  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Molecular graph">`;
+  L.edges.forEach(([a, b]) => { const hl = sel !== null && (L.nodes[a] === sel || L.nodes[b] === sel); svg += `<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}" class="${hl ? "hl" : ""}"/>`; });
+  L.nodes.forEach((i, k) => {
+    const s = res.symbols[i], r = s === "H" ? (big ? 5 : 3.5) : (big ? 9 : 5.5);
+    svg += `<circle data-sel="${i}" cx="${P[k][0]}" cy="${P[k][1]}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${lab(i)}, ${plural(res._nb[i].length, "bond")}</title></circle>`;
+    if (big && s !== "H") svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I", "Mo", "W", "K", "Rb", "Cs", "Ru", "Rh", "Pd", "Ir", "Os"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
+  });
+  svg += "</svg>";
+  const heavy = res.graphs.heavy, full = res.graphs.full;
+  $("body").innerHTML = `
+    <section>
+      <div class="row space"><h2>Molecular graph</h2>
+        <div class="row">${seg("layout", state.graphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
+        <label class="row small"><input type="checkbox" id="gH" ${state.graphH ? "checked" : ""}>Hide hydrogens</label></div></div>
+      <p class="note">${state.graphH ? `The hydrogen-suppressed graph: ${plural(heavy.nodes, "node")}, ${plural(heavy.edges, "edge")}. This is the graph the Wiener index is defined on.` : `The full graph: ${plural(full.nodes, "node")}, ${plural(full.edges, "edge")}.`} ${state.graphLayout === "spring" ? "Spring layout spreads the nodes out; positions carry no meaning, only the connections do." : "Nodes are placed as in the 3D view, flattened."}</p>
+      <div class="figure">${svg}</div>
+      ${state.graphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="relayout">Lay out again from the current 3D view</button></div>` : ""}
+    </section>
+    <section>
+      <div class="row space"><h2>Adjacency list</h2><button class="btn small" id="copyList">Copy</button></div>
+      <pre class="text" id="adjList">${res.symbols.map((s, i) => `${(lab(i) + ":").padEnd(7)}${res._nb[i].slice().sort((a, b) => a - b).map(lab).join("  ") || "(none)"}`).join("\n")}</pre>
+    </section>`;
+}
+
+/* ---------------- Matrix tab ---------------- */
+function renderMatrix() {
+  const s = state.settings, n = res.n;
+  $("body").innerHTML = `
+    <section>
+      <div class="row space"><h2>Adjacency matrix</h2>${seg("mview", state.matrixView, [["map", "Map"], ["numbers", "Numbers"]])}</div>
+      <p class="note">W<sub>ij</sub> = 1 when atoms i and j are bonded, 0 otherwise. Rows and columns follow the atom order in the file. In the map, black cells are bonds, outlined cells are the diagonal (coloured by element) and the coloured strips mark which element each row is.</p>
+      <div class="row" style="margin-bottom:10px"><span class="small muted">Diagonal W<sub>ii</sub></span>${seg("diag", s.diagonal, [["Z", "Atomic number Z"], ["zero", "Zero (plain adjacency A)"]])}</div>
+      <div class="figure matrix-wrap">${state.matrixView === "map" ? `<canvas id="heat" aria-label="Adjacency matrix as a map"></canvas><div class="readout" id="readout">Point at a cell to read it. Click to select that atom.</div>`
+        : n <= 150 ? `<pre class="text">${matrixText()}</pre>` : `<p class="muted">With ${n} atoms the numbers are too many to show here. Download the matrix as a .csv file instead.</p>`}</div>
+      <p class="note small" style="margin-top:8px">${s.diagonal === "Z" ? "This is the matrix the old app called the identity-encoded adjacency matrix." : "This is the plain adjacency matrix A used for graph energy and the Estrada index."}</p>
+    </section>`;
+  if (state.matrixView === "map") drawHeat();
+}
+function matrixText() {
+  const n = res.n, diagZ = state.settings.diagonal === "Z", w = diagZ ? Math.max(...res.Z).toString().length + 1 : 2;
+  const rows = [];
+  for (let i = 0; i < n; i++) { let r = ""; for (let j = 0; j < n; j++) r += String(i === j ? (diagZ ? res.Z[i] : 0) : isBonded(i, j) ? 1 : 0).padStart(w); rows.push(r.slice(1)); }
+  return rows.join("\n");
+}
+function drawHeat() {
+  const cv = $("heat"), n = res.n, strip = n > 1 ? 6 : 0;
+  const cssW = Math.min(cv.parentElement.clientWidth - 24, 560), cell = Math.max(1, Math.floor((cssW - strip) / n)), size = strip + cell * n;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = size * dpr; cv.height = size * dpr; cv.style.width = size + "px"; cv.style.height = size + "px";
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = cssVar("--sheet"); ctx.fillRect(0, 0, size, size);
+  const ink = cssVar("--bar"), line = cssVar("--line"), diagZ = state.settings.diagonal === "Z";
+  if (cell >= 5) { ctx.strokeStyle = line; ctx.lineWidth = 0.5; for (let k = 0; k <= n; k++) { const p = strip + k * cell + 0.25; ctx.beginPath(); ctx.moveTo(strip, p); ctx.lineTo(size, p); ctx.moveTo(p, strip); ctx.lineTo(p, size); ctx.stroke(); } }
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = colorOf(res.symbols[i]); ctx.fillRect(0, strip + i * cell, strip - 1, cell); ctx.fillRect(strip + i * cell, 0, cell, strip - 1);
+    if (diagZ) { const x = strip + i * cell; ctx.fillStyle = colorOf(res.symbols[i]); ctx.fillRect(x, x, cell, cell); if (cell >= 4) { ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, x + 0.5, cell - 1, cell - 1); } }
+  }
+  ctx.fillStyle = ink;
+  res.bonds.forEach(([i, j]) => { ctx.fillRect(strip + j * cell, strip + i * cell, cell, cell); ctx.fillRect(strip + i * cell, strip + j * cell, cell, cell); });
+  if (diagZ && cell >= 14) { ctx.font = `500 ${Math.min(11, cell - 4)}px ${cssVar("--mono") || "monospace"}`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#1D2A31"; for (let i = 0; i < n; i++) ctx.fillText(res.Z[i], strip + (i + 0.5) * cell, strip + (i + 0.5) * cell); }
+  if (sel !== null) { ctx.fillStyle = "rgba(35,87,194,.16)"; ctx.fillRect(strip, strip + sel * cell, cell * n, cell); ctx.fillRect(strip + sel * cell, strip, cell, cell * n); }
+  const cellAt = (e) => { const r = cv.getBoundingClientRect(); const x = e.clientX - r.left - strip, y = e.clientY - r.top - strip; if (x < 0 || y < 0) return null; const j = Math.floor(x / cell), i = Math.floor(y / cell); return i < n && j < n ? [i, j] : null; };
+  cv.onmousemove = (e) => {
+    const c = cellAt(e), out = $("readout"); if (!c) return;
+    const [i, j] = c;
+    const v = i === j ? (diagZ ? res.Z[i] : 0) : isBonded(i, j) ? 1 : 0;
+    out.innerHTML = i === j ? `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${v}</b> (diagonal)` : `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${v}</b>, distance ${fix(dist(res.coords[i], res.coords[j]), 3)} Å`;
+  };
+  cv.onclick = (e) => { const c = cellAt(e); if (c) select(c[0]); };
+}
+
+/* ---------------- Spectrum tab ---------------- */
+function renderSpectrum() {
+  const sp = res.spectrum, s = state.settings, diagZ = s.diagonal === "Z";
+  const trap = sp.energy_is_trace && diagZ;
+  $("body").innerHTML = `
+    <section>
+      <h2>Energy</h2>
+      <p class="note">Computed from the eigenvalues λ of W${diagZ ? " (diagonal = Z)" : " (diagonal = 0)"}, and of the plain adjacency matrix A.</p>
+      <div class="figures">
+        <div><div class="l">Σ |λ<sub>i</sub>| of W</div><div class="v">${sig(sp.energy_abs, 10)}</div></div>
+        <div><div class="l">Σ |λ<sub>i</sub> − tr W / n| of W</div><div class="v">${sig(sp.energy_centred, 10)}</div></div>
+        <div><div class="l">Graph energy of A (Gutman)</div><div class="v">${sig(res.energy_A, 10)}</div></div>
+      </div>
+      ${trap ? `<div class="callout">Every eigenvalue of W is positive here, so Σ |λ| is just the trace, the sum of the atomic numbers (${int(sp.trace)}). It would be the same number with any set of bonds, so it cannot tell structures apart. The centred energy, or the graph energy of A, does change with the bonds.</div>` : ""}
+    </section>
+    <section>
+      <h2>Eigenvalues of W</h2>
+      <p class="note">${plural(sp.eigenvalues.length, "eigenvalue")}, largest first: from ${sig(sp.eigenvalues[0], 6)} down to ${sig(sp.eigenvalues[sp.eigenvalues.length - 1], 6)}.</p>
+      <div class="figure" id="eigChart"></div>
+    </section>
+    <section>
+      <div class="row space"><h2>Spectral moments</h2><span class="row small muted">k up to <input type="number" id="kmax" min="2" max="200" value="${s.kmax}" style="width:70px"></span></div>
+      <p class="note">μ<sub>k</sub> = Σ λ<sub>i</sub><sup>k</sup> = tr(W<sup>k</sup>), which counts weighted closed walks of length k. Plotted as log₁₀ μ<sub>k</sub>${sp.moments.some((m) => m !== null && m <= 0) ? "; zero or negative values are left out" : ""}.</p>
+      <div class="figure" id="momChart"></div>
+    </section>`;
+  $("eigChart").innerHTML = dotChart(sp.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
+  $("momChart").innerHTML = dotChart(sp.moments.map((v, k) => [k + 1, v]).filter(([, v]) => v !== null && v > 0).map(([k, v]) => [k, Math.log10(v)]), "k", "log₁₀ μk", false, true);
+}
+function niceTicks(a, b, count = 5) {
+  if (a === b) { a -= 1; b += 1; }
+  const raw = (b - a) / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag, step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
+  const out = []; for (let t = Math.ceil(a / step) * step; t <= b + step * 1e-6; t += step) out.push(+t.toPrecision(12)); return out;
+}
+function dotChart(pts, xl, yl, zeroLine, joined) {
+  const W = 540, H = 200, m = { l: 46, r: 12, t: 10, b: 32 };
+  if (!pts.length) return `<p class="muted">Nothing to plot.</p>`;
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); if (zeroLine) { y0 = Math.min(y0, 0); y1 = Math.max(y1, 0); }
+  const yt = niceTicks(y0, y1, 4); y0 = Math.min(y0, yt[0]); y1 = Math.max(y1, yt[yt.length - 1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const X = (x) => m.l + (x - x0) / ((x1 - x0) || 1) * (W - m.l - m.r), Y = (y) => H - m.b - (y - y0) / ((y1 - y0) || 1) * (H - m.t - m.b);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}">`;
+  yt.forEach((v) => { s += `<line class="gridline" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${m.l - 6}" y="${Y(v) + 3.5}" text-anchor="end">${sig(v, 4)}</text>`; });
+  if (zeroLine && y0 < 0) s += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+  niceTicks(x0, x1, 6).filter((t) => Number.isInteger(t) && t >= x0 && t <= x1).forEach((t) => { s += `<text x="${X(t)}" y="${H - m.b + 15}" text-anchor="middle">${t}</text>`; });
+  s += `<line class="axis" x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}"/>`;
+  s += `<text x="${(W + m.l) / 2}" y="${H - 2}" text-anchor="middle">${xl}</text><text x="12" y="${(H - m.b + m.t) / 2}" transform="rotate(-90 12 ${(H - m.b + m.t) / 2})" text-anchor="middle">${yl}</text>`;
+  if (joined) s += `<polyline fill="none" stroke="var(--accent)" stroke-width="1.5" points="${pts.map(([x, y]) => `${X(x)},${Y(y)}`).join(" ")}"/>`;
+  const r = pts.length > 300 ? 1.4 : 2.6;
+  pts.forEach(([x, y]) => { s += `<circle cx="${X(x)}" cy="${Y(y)}" r="${r}" fill="var(--bar)"><title>${xl} ${x}: ${sig(y, 8)}</title></circle>`; });
+  return s + "</svg>";
+}
+
+/* ---------------- Indices tab ---------------- */
+function renderIndices() {
+  const g = res.graphs, F = g.full, Hs = g.heavy;
+  const rows = [
+    ["Nodes", int(F.nodes), int(Hs.nodes)], ["Edges", int(F.edges), int(Hs.edges)], ["Separate pieces", int(F.fragments), int(Hs.fragments)],
+    ["Wiener index W", int(F.wiener), int(Hs.wiener), "Σ d(u, v) over all pairs, d = number of bonds on the shortest path"],
+    ["Estrada index EE", sig(F.estrada, 10), sig(Hs.estrada, 10), "Σ exp(λ) of A = tr exp(A)"],
+    ["First Zagreb M₁", int(F.zagreb1), int(Hs.zagreb1), "Σ deg(v)²"],
+    ["Second Zagreb M₂", int(F.zagreb2), int(Hs.zagreb2), "Σ deg(u) deg(v) over bonds"],
+    ["Randić index χ", sig(F.randic, 10), sig(Hs.randic, 10), "Σ 1 / √(deg(u) deg(v)) over bonds"],
+  ];
+  const which = state.centralityGraph, arr = which === "heavy" ? res.centrality_heavy : res.centrality_full;
+  const ranked = arr.map((v, i) => [i, v]).filter(([, v]) => v !== null).sort((a, b) => b[1] - a[1]);
+  const disc = F.fragments > 1 || Hs.fragments > 1;
+  $("body").innerHTML = `
+    <section>
+      <h2>Topological indices</h2>
+      <p class="note">The Wiener, Zagreb and Randić indices are normally quoted for the hydrogen-suppressed graph. The full graph is shown for reference.</p>
+      <table class="data"><thead><tr><th>Index</th><th class="num">Full graph</th><th class="num">H-suppressed</th></tr></thead><tbody>
+      ${rows.map(([n, a, b, t]) => `<tr><td>${n}${t ? `<div class="muted small">${t}</div>` : ""}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`).join("")}
+      </tbody></table>
+      ${disc ? `<div class="callout">The graph is in separate pieces, so pairs in different pieces have no path between them. They are left out of the Wiener index, which makes it hard to compare with published values. Check the Bonds tab first.</div>` : ""}
+    </section>
+    <section>
+      <div class="row space"><h2>Subgraph centrality</h2>${seg("cg", which, [["heavy", "H-suppressed"], ["full", "Full graph"]])}</div>
+      <p class="note">(exp A)<sub>vv</sub> for each atom: how many closed walks pass through it, short walks counting most. These add up to the Estrada index.</p>
+      <div class="scroll"><table class="data"><thead><tr><th>Rank</th><th>Atom</th><th class="num">Bonds</th><th class="num">Centrality</th></tr></thead><tbody>
+      ${ranked.map(([i, v], k) => `<tr class="clickable ${i === sel ? "sel" : ""}" data-sel="${i}"><td>${k + 1}</td><td>${lab(i)}</td><td class="num">${res.degree[i]}</td><td class="num">${fix(v, 8)}</td></tr>`).join("")}
+      </tbody></table></div>
+    </section>`;
+}
+
+/* ---------------- Atoms tab ---------------- */
+function renderAtoms() {
+  const X = res.coords;
+  $("body").innerHTML = `
+    <section>
+      <h2>Atoms</h2>
+      <p class="note">Coordinates in Å as they are in the file. Numbering starts at ${state.base}; change it in the Download menu.</p>
+      <div class="scroll" style="max-height:none"><table class="data"><thead><tr><th>Atom</th><th class="num">Z</th><th class="num">x</th><th class="num">y</th><th class="num">z</th><th class="num">Bonds</th><th>Bonded to</th></tr></thead><tbody>
+      ${res.symbols.map((s, i) => `<tr class="clickable ${i === sel ? "sel" : ""}" data-sel="${i}"><td>${lab(i)}${res._issueSet.has(i) ? ` <span class="tag no">check</span>` : ""}</td><td class="num">${res.Z[i]}</td><td class="num">${fix(X[i][0], 5)}</td><td class="num">${fix(X[i][1], 5)}</td><td class="num">${fix(X[i][2], 5)}</td><td class="num">${res.degree[i]}</td><td class="small">${res._nb[i].map(lab).join(", ")}</td></tr>`).join("")}
+      </tbody></table></div>
+    </section>`;
+  if (sel !== null) { const tr = $("body").querySelector("tr.sel"); tr && tr.scrollIntoView({ block: "nearest" }); }
+}
+
+/* ---------------- downloads ---------------- */
+const DL = [["all", "Everything", ".zip"], null, ["adjacency.csv", "Adjacency matrix", ".csv"], ["eigenvalues.csv", "Eigenvalues", ".csv"], ["k_moment.csv", "Spectral moments", ".csv"],
+  ["wiener.csv", "Wiener index", ".csv"], ["estrada.csv", "Estrada index and centrality", ".csv"], ["bonds.csv", "Bond list with distances", ".csv"],
+  ["adjacency_list.txt", "Adjacency list", ".txt"], ["report.txt", "Summary report", ".txt"], null, ["png", "Picture of the molecule", ".png"]];
+function renderMenu() {
+  $("dlMenu").innerHTML = DL.map((d) => d ? `<button role="menuitem" data-dl="${d[0]}"><span>${d[1]}</span><span class="ext">${d[2]}</span></button>` : "<hr>").join("")
+    + `<hr><div class="numbering"><span>Number atoms from</span>${seg("base", String(state.base), [["1", "1"], ["0", "0 (old app)"]])}</div>`;
+}
+$("dlBtn").addEventListener("click", (e) => { e.stopPropagation(); const m = $("dlMenu"); renderMenu(); m.hidden = !m.hidden; $("dlBtn").setAttribute("aria-expanded", String(!m.hidden)); });
+document.addEventListener("click", (e) => { if (!e.target.closest("#dlMenu") && !e.target.closest("#dlBtn")) { $("dlMenu").hidden = true; $("dlBtn").setAttribute("aria-expanded", "false"); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("dlMenu").hidden = true; if (sel !== null) select(null); } });
+$("dlMenu").addEventListener("click", async (e) => {
+  const sb = e.target.closest("[data-seg]");
+  if (sb) { state.base = +sb.dataset.seg.split(":")[1]; save(); renderMenu(); renderStage(); renderBody(true); renderInspector(); return; }
+  const b = e.target.closest("[data-dl]"); if (!b || !res) return;
+  $("dlMenu").hidden = true;
+  const stem = file.name.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_.-]+/g, "_") + (file.frames.length > 1 ? `_frame${file.frame + 1}` : "");
+  if (b.dataset.dl === "png") return exportPNG(stem);
+  const r = await runner.call("exports", file.frame, JSON.stringify(state.settings), stem, state.base);
+  if (!r.ok) return toast(r.error);
+  if (b.dataset.dl === "all") { download(`${stem}_graph.zip`, makeZip(r.files)); toast(`Saved ${Object.keys(r.files).length} files as ${stem}_graph.zip`); }
+  else { const name = `${stem}_${b.dataset.dl}`; download(name, r.files[name]); }
+});
+function exportPNG(stem) {
+  const w = mol.canvas.clientWidth, h = mol.canvas.clientHeight, c = document.createElement("canvas"), dpr = 3;
+  c.width = w * dpr; c.height = h * dpr;
+  mol.draw({ canvas: c, w, h, dpr, bg: cssVar("--sheet") });
+  c.toBlob((b) => download(`${stem}.png`, b), "image/png");
+}
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes) { let c = 0xFFFFFFFF; for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  const d = new Date(), dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  for (const [name, text] of Object.entries(files)) {
+    const nameB = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true); local.setUint16(8, 0, true);
+    local.setUint16(10, dosTime, true); local.setUint16(12, dosDate, true); local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true); local.setUint32(22, data.length, true); local.setUint16(26, nameB.length, true); local.setUint16(28, 0, true);
+    parts.push(new Uint8Array(local.buffer), nameB, data);
+    const cen = new DataView(new ArrayBuffer(46));
+    cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 0x031E, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
+    cen.setUint16(10, 0, true); cen.setUint16(12, dosTime, true); cen.setUint16(14, dosDate, true); cen.setUint32(16, crc, true);
+    cen.setUint32(20, data.length, true); cen.setUint32(24, data.length, true); cen.setUint16(28, nameB.length, true);
+    cen.setUint32(38, (0o100644 << 16) >>> 0, true); cen.setUint32(42, offset, true);
+    central.push(new Uint8Array(cen.buffer), nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cenSize = central.reduce((s, p) => s + p.length, 0), end = new DataView(new ArrayBuffer(22)), n = Object.keys(files).length;
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, n, true); end.setUint16(10, n, true); end.setUint32(12, cenSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+}
+
+/* ---------------- wiring ---------------- */
+$("openBtn").onclick = $("emptyOpen").onclick = () => $("fileInput").click();
+$("fileInput").onchange = (e) => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; };
+document.querySelectorAll("[data-ex]").forEach((b) => { b.disabled = true; b.onclick = () => openExample(b.dataset.ex); });
+$("pill").onclick = () => { state.tab = "bonds"; save(); renderTabs(); renderBody(); };
+for (const [id, key] of [["vH", "h"], ["vLabels", "labels"], ["vNear", "near"]]) {
+  $(id).checked = state.view[key];
+  $(id).onchange = (e) => { state.view[key] = e.target.checked; save(); renderStage(); };
+}
+$("frameSel").onchange = (e) => setFrame(+e.target.value);
+$("framePrev").onclick = () => setFrame(file.frame - 1);
+$("frameNext").onclick = () => setFrame(file.frame + 1);
+function setFrame(k) { if (!file) return; file.frame = Math.max(0, Math.min(file.frames.length - 1, k)); renderFileInfo(); save(); analyse(); }
+let dragDepth = 0;
+window.addEventListener("dragenter", (e) => { if ([...(e.dataTransfer?.types || [])].includes("Files")) { dragDepth++; $("dropGlow").hidden = false; } });
+window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $("dropGlow").hidden = true; });
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; $("dropGlow").hidden = true; const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { renderStage(); renderBody(true); });
+window.addEventListener("resize", debounce(() => { if (res && state.tab === "matrix" && state.matrixView === "map") drawHeat(); }, 150));
+// apply restored view toggles before boot finishes
+const saved0 = restore(); if (saved0 && saved0.view) for (const [id, key] of [["vH", "h"], ["vLabels", "labels"], ["vNear", "near"]]) if (key in saved0.view) $(id).checked = saved0.view[key];
+boot();
+</script>
+</body>
+</html>
