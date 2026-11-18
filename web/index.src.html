@@ -214,16 +214,16 @@ pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 36
 .graph-svg { width: 100%; height: auto; display: block; }
 .graph-svg line { stroke: var(--ink3); stroke-width: 1.3; }
 .graph-svg line.hl { stroke: var(--accent); stroke-width: 2.4; }
+.graph-svg line.collapsed { stroke: var(--line2); stroke-width: 1.35; }
 .graph-svg circle { stroke: rgba(0,0,0,.35); stroke-width: 1; cursor: pointer; }
 .graph-svg circle.sel { stroke: var(--accent); stroke-width: 3; }
 .graph-svg text { font: 500 9px var(--sans); fill: #1D2A31; pointer-events: none; }
-.graph-svg path.arc { fill: none; stroke: var(--ink3); stroke-width: 1.25; }
-.graph-svg path.arc.out { stroke: var(--accent); stroke-width: 2.1; }
-.graph-svg path.arc.in { stroke: var(--ok); stroke-width: 2.1; }
-.graph-svg rect.w-pill { fill: var(--sheet); stroke: var(--line2); stroke-width: 0.85; }
-.graph-svg rect.w-pill.out { stroke: var(--accent); }
-.graph-svg rect.w-pill.in { stroke: var(--ok); }
-.graph-svg text.w-label { font: 500 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
+.graph-svg path.arc { fill: none; stroke: var(--ink3); stroke-width: 1.2; }
+.graph-svg path.arc.out { stroke: var(--accent); stroke-width: 2.0; }
+.graph-svg path.arc.in { stroke: var(--ok); stroke-width: 2.0; }
+.graph-svg text.w-label { font: 600 9.5px var(--mono); fill: var(--ink); paint-order: stroke; stroke: var(--sheet); stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+.graph-svg text.w-label.out { fill: var(--accent); }
+.graph-svg text.w-label.in { fill: var(--ok); }
 
 .status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; padding: 6px 18px; border-top: 1px solid var(--line); background: var(--panel); color: var(--ink2); font-size: 12px; }
 .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); display: inline-block; margin-right: 6px; }
@@ -231,7 +231,6 @@ pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 36
 .status .dot.fail { background: var(--bad); }
 .status .copyright { color: var(--ink2); }
 .status .engine { margin-left: auto; }
-.status .credit { font-style: italic; }
 .toast { position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%); background: var(--ink); color: var(--panel); padding: 9px 14px; border-radius: 8px; z-index: 50; max-width: min(560px, calc(100% - 32px)); font-size: 13px; }
 
 @media (max-width: 900px) {
@@ -326,7 +325,6 @@ pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 36
   <footer class="status">
     <span class="copyright">© 2026 George Sanjaya &amp; Hafiz Aji Aziz</span>
     <span class="engine"><span class="dot" id="engineDot"></span><span id="engineText">Starting Python in your browser…</span></span>
-    <span class="credit">Made by George and Hafiz</span>
   </footer>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -450,7 +448,8 @@ let state = {
   graphLayout: "spring",
   matrixView: "map",
   dirGraphH: false,
-  dirGraphWeights: true,
+  dirArcs: "auto",
+  dirWeights: "auto",
   dirGraphLayout: "spring",
   dirMatrixView: "map",
   centralityGraph: "heavy",
@@ -969,7 +968,6 @@ $("body").addEventListener("change", (e) => {
   else if (t.id === "gH") { state.graphH = t.checked; save(); renderUndirected(); }
   else if (t.id === "gW") { state.graphWeights = t.checked; save(); renderUndirected(); }
   else if (t.id === "dgH") { state.dirGraphH = t.checked; save(); renderDirected(); }
-  else if (t.id === "dgW") { state.dirGraphWeights = t.checked; save(); renderDirected(); }
 });
 $("body").addEventListener("click", (e) => {
   const s = state.settings, t = e.target;
@@ -997,6 +995,8 @@ function segChange(key, val) {
   else if (key === "cg") { state.centralityGraph = val; save(); renderIndices(); }
   else if (key === "layout") { state.graphLayout = val; save(); renderUndirected(); }
   else if (key === "dlayout") { state.dirGraphLayout = val; save(); renderDirected(); }
+  else if (key === "darcs") { state.dirArcs = val; save(); renderDirected(); }
+  else if (key === "dw") { state.dirWeights = val; save(); renderDirected(); }
   document.querySelectorAll(`[data-seg^="${key}:"]`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.seg === `${key}:${val}`));
 }
 const seg = (key, cur, opts) => `<div class="seg" role="group">${opts.map(([v, t, dis, tip]) => `<button data-seg="${key}:${v}" aria-pressed="${cur === v}" ${dis ? "disabled" : ""} ${tip ? `title="${esc(tip)}"` : ""}>${t}</button>`).join("")}</div>`;
@@ -1091,20 +1091,20 @@ function spectrumBlockHTML(spec, label, diagZ, isDir, kInputId, eigChartId, momC
 }
 
 /* ---------------- Collision-free 2D edge label placement ---------------- */
-function placeEdgePills(candidates, nodeBoxes, W, H) {
+function placeEdgeLabels(candidates, nodeBoxes, W, H) {
   // candidates: [{ priority, tip, cls, txt, pts: [{x, y}, ...] }]
   const placed = [];
-  const occupied = nodeBoxes.map(([cx, cy, r]) => ({ x0: cx - r - 2, y0: cy - r - 2, x1: cx + r + 2, y1: cy + r + 2 }));
+  const occupied = nodeBoxes.map(([cx, cy, r]) => ({ x0: cx - r - 2.5, y0: cy - r - 2.5, x1: cx + r + 2.5, y1: cy + r + 2.5 }));
   const overlaps = (a, b) => !(a.x1 <= b.x0 || a.x0 >= b.x1 || a.y1 <= b.y0 || a.y0 >= b.y1);
   const sorted = [...candidates].sort((a, b) => b.priority - a.priority);
   for (const c of sorted) {
-    const pw = Math.max(15, c.txt.length * 5.7 + 7), ph = 13;
+    const pw = Math.max(12, c.txt.length * 5.6 + 4), ph = 11.5;
     for (const pt of c.pts) {
       const box = { x0: pt.x - pw / 2 - 1.5, y0: pt.y - ph / 2 - 1.5, x1: pt.x + pw / 2 + 1.5, y1: pt.y + ph / 2 + 1.5 };
-      if (box.x0 < 2 || box.x1 > W - 2 || box.y0 < 2 || box.y1 > H - 2) continue;
+      if (box.x0 < 3 || box.x1 > W - 3 || box.y0 < 3 || box.y1 > H - 3) continue;
       if (!occupied.some((o) => overlaps(box, o))) {
         occupied.push(box);
-        placed.push({ x: pt.x, y: pt.y, pw, ph, txt: c.txt, cls: c.cls || "", tip: c.tip });
+        placed.push({ x: pt.x, y: pt.y, txt: c.txt, cls: c.cls || "", tip: c.tip });
         break;
       }
     }
@@ -1124,7 +1124,7 @@ function renderUndirected() {
   const nodeR = (idx) => (res.symbols[idx] === "H" ? (big ? 7 : 3.5) : (big ? 10 : 5.5));
 
   let svg = `<svg class="graph-svg" id="undirSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Undirected weighted molecular graph">`;
-  const pillCandidates = [];
+  const labelCandidates = [];
   L.edges.forEach(([a, b]) => {
     const ia = L.nodes[a], ib = L.nodes[b];
     const hl = sel !== null && (ia === sel || ib === sel);
@@ -1141,26 +1141,25 @@ function renderUndirected() {
         { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
         { x: x1 + 0.38 * dx, y: y1 + 0.38 * dy },
         { x: x1 + 0.62 * dx, y: y1 + 0.62 * dy },
-        { x: (x1 + x2) / 2 + nx * 8, y: (y1 + y2) / 2 + ny * 8 },
-        { x: (x1 + x2) / 2 - nx * 8, y: (y1 + y2) / 2 - ny * 8 },
+        { x: (x1 + x2) / 2 + nx * 7, y: (y1 + y2) / 2 + ny * 7 },
+        { x: (x1 + x2) / 2 - nx * 7, y: (y1 + y2) / 2 - ny * 7 },
       ];
-      pillCandidates.push({ priority: (hl ? 1000 : 0) + len, tip, cls: hl ? "out" : "", txt: fmtW(w), pts });
+      labelCandidates.push({ priority: (hl ? 1000 : 0) + len, tip, cls: hl ? "out" : "", txt: fmtW(w), pts });
     }
   });
-  if (showW) {
-    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
-    const pills = placeEdgePills(pillCandidates, nodeBoxes, W, H);
-    pills.forEach((pl) => {
-      svg += `<g data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title><rect class="w-pill ${pl.cls}" x="${(pl.x - pl.pw / 2).toFixed(1)}" y="${(pl.y - pl.ph / 2).toFixed(1)}" width="${pl.pw.toFixed(1)}" height="${pl.ph}" rx="3"/>`;
-      svg += `<text class="w-label" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.1).toFixed(1)}" text-anchor="middle">${pl.txt}</text></g>`;
-    });
-  }
   L.nodes.forEach((i, k) => {
     const s = res.symbols[i], r = nodeR(i);
     const nTip = `${lab(i)}, ${plural(res._nb[i].length, "bond")}${weighted && res.atom_props ? ` (${wKey} = ${fmtW(res.atom_props[i])})` : ""}`;
     svg += `<circle data-sel="${i}" data-etip="${esc(nTip)}" cx="${P[k][0].toFixed(1)}" cy="${P[k][1].toFixed(1)}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${esc(nTip)}</title></circle>`;
     if (big) svg += `<text x="${P[k][0].toFixed(1)}" y="${(P[k][1] + 3).toFixed(1)}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
   });
+  if (showW) {
+    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
+    const labels = placeEdgeLabels(labelCandidates, nodeBoxes, W, H);
+    labels.forEach((pl) => {
+      svg += `<text class="w-label ${pl.cls}" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.2).toFixed(1)}" text-anchor="middle" data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title>${pl.txt}</text>`;
+    });
+  }
   svg += "</svg>";
 
   const n = res.n, diagZ = state.settings.diagonal === "Z";
@@ -1181,7 +1180,7 @@ function renderUndirected() {
         <div class="row">${seg("layout", state.graphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
         <label class="row small"><input type="checkbox" id="gW" ${state.graphWeights ? "checked" : ""} ${weighted ? "" : "disabled"}>Edge weights</label>
         <label class="row small"><input type="checkbox" id="gH" ${state.graphH ? "checked" : ""}>Hide hydrogens</label></div></div>
-      <div class="figure">${svg}<div class="readout" id="undirReadout">Point at an edge or atom to read its weight. Overlapping labels are automatically hidden; hover any edge to inspect it.</div></div>
+      <div class="figure">${svg}<div class="readout" id="undirReadout">Point at an edge or atom to read its weight. Click an atom to highlight its bonds.</div></div>
       ${state.graphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="relayout">Lay out again from the current 3D view</button></div>` : ""}
     </section>
     <section>
@@ -1215,18 +1214,20 @@ function renderDirected() {
   const big = L.nodes.length <= 70;
   const wKey = state.settings.weight || "Z";
   const weighted = wKey !== "none";
-  const showW = state.dirGraphWeights;
+  const arcsMode = ["auto", "all"].includes(state.dirArcs) ? state.dirArcs : "auto";
+  const weightsMode = ["auto", "all", "off"].includes(state.dirWeights) ? state.dirWeights : "auto";
+  const isSmallGraph = L.edges.length <= 10;
 
   let svg = `<svg class="graph-svg" id="dirSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Directed weighted molecular graph">
     <defs>
-      <marker id="arr-def" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
-        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--ink3)"/>
+      <marker id="arr-def" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="4.2" markerHeight="4.2" orient="auto">
+        <path d="M 1 1.8 L 9 5 L 1 8.2 z" fill="var(--ink3)"/>
       </marker>
-      <marker id="arr-out" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--accent)"/>
+      <marker id="arr-out" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="4.8" markerHeight="4.8" orient="auto">
+        <path d="M 1 1.8 L 9 5 L 1 8.2 z" fill="var(--accent)"/>
       </marker>
-      <marker id="arr-in" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--ok)"/>
+      <marker id="arr-in" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="4.8" markerHeight="4.8" orient="auto">
+        <path d="M 1 1.8 L 9 5 L 1 8.2 z" fill="var(--ok)"/>
       </marker>
     </defs>`;
 
@@ -1235,26 +1236,39 @@ function renderDirected() {
     return s === "H" ? (big ? 7 : 3.5) : (big ? 10.5 : 5.5);
   };
 
-  const pillCandidates = [];
+  const labelCandidates = [];
   L.edges.forEach(([a, b]) => {
     const ia = L.nodes[a], ib = L.nodes[b];
+    const touchesSel = sel !== null && (ia === sel || ib === sel);
+    const expandEdge = arcsMode === "all" || isSmallGraph || touchesSel;
+    const wAB = dirWeight(ia, ib), wBA = dirWeight(ib, ia);
+    const pairTip = weighted && wAB !== undefined && wBA !== undefined
+      ? `${lab(ia)} → ${lab(ib)} (${fmtW(wAB)})  |  ${lab(ib)} → ${lab(ia)} (${fmtW(wBA)})`
+      : `${lab(ia)} ↔ ${lab(ib)}`;
+
+    if (!expandEdge) {
+      svg += `<line x1="${P[a][0].toFixed(1)}" y1="${P[a][1].toFixed(1)}" x2="${P[b][0].toFixed(1)}" y2="${P[b][1].toFixed(1)}" class="collapsed" data-etip="${esc(pairTip)}"><title>${esc(pairTip)}</title></line>`;
+      return;
+    }
+
     const [x1, y1] = P[a], [x2, y2] = P[b];
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
     const nx = -uy, ny = ux;
-    const bow = Math.min(13, Math.max(6, len * 0.13));
+    const track = Math.min(2.3, len * 0.045);
+    const bow = Math.min(5.8, Math.max(2.8, len * 0.068));
 
     for (const [fromK, toK, fromAtom, toAtom, sign] of [[a, b, ia, ib, 1], [b, a, ib, ia, -1]]) {
       const [sx, sy] = P[fromK], [tx, ty] = P[toK];
-      const rStart = nodeR(fromAtom) + 1.5;
-      const rEnd = nodeR(toAtom) + 3.0;
+      const rStart = nodeR(fromAtom) + 1.2;
+      const rEnd = nodeR(toAtom) + 2.4;
       const dux = (tx - sx) / len, duy = (ty - sy) / len;
-      const p0x = sx + dux * rStart + nx * sign * 2.2;
-      const p0y = sy + duy * rStart + ny * sign * 2.2;
-      const p2x = tx - dux * rEnd + nx * sign * 2.2;
-      const p2y = ty - duy * rEnd + ny * sign * 2.2;
-      const cx = (sx + tx) / 2 + nx * sign * bow * 2;
-      const cy = (sy + ty) / 2 + ny * sign * bow * 2;
+      const p0x = sx + dux * rStart + nx * sign * track;
+      const p0y = sy + duy * rStart + ny * sign * track;
+      const p2x = tx - dux * rEnd + nx * sign * track;
+      const p2y = ty - duy * rEnd + ny * sign * track;
+      const cx = (sx + tx) / 2 + nx * sign * (track + bow);
+      const cy = (sy + ty) / 2 + ny * sign * (track + bow);
 
       const isOut = sel !== null && fromAtom === sel;
       const isIn = sel !== null && toAtom === sel;
@@ -1267,31 +1281,25 @@ function renderDirected() {
 
       svg += `<path d="M ${p0x.toFixed(1)} ${p0y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${p2x.toFixed(1)} ${p2y.toFixed(1)}" class="${cls}" marker-end="${mk}" data-etip="${esc(tip)}"><title>${esc(tip)}</title></path>`;
 
-      if (showW && w !== undefined) {
+      const showThisLabel = weightsMode === "all" || (weightsMode === "auto" && (isSmallGraph || touchesSel));
+      if (showThisLabel && w !== undefined) {
         const bez = (t) => {
           const mt = 1 - t;
-          return { x: mt * mt * p0x + 2 * mt * t * cx + t * t * p2x, y: mt * mt * p0y + 2 * mt * t * cy + t * t * p2y };
+          return {
+            x: mt * mt * p0x + 2 * mt * t * cx + t * t * p2x + nx * sign * 5.2,
+            y: mt * mt * p0y + 2 * mt * t * cy + t * t * p2y + ny * sign * 5.2,
+          };
         };
-        const pts = [bez(0.50), bez(0.38), bez(0.62)];
-        pillCandidates.push({
+        labelCandidates.push({
           priority: ((isOut || isIn) ? 1000 : 0) + len,
           tip,
           cls: isOut ? "out" : isIn ? "in" : "",
           txt: fmtW(w),
-          pts,
+          pts: [bez(0.50), bez(0.38), bez(0.62)],
         });
       }
     }
   });
-
-  if (showW) {
-    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
-    const pills = placeEdgePills(pillCandidates, nodeBoxes, W, H);
-    pills.forEach((pl) => {
-      svg += `<g data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title><rect class="w-pill ${pl.cls}" x="${(pl.x - pl.pw / 2).toFixed(1)}" y="${(pl.y - pl.ph / 2).toFixed(1)}" width="${pl.pw.toFixed(1)}" height="${pl.ph}" rx="3"/>`;
-      svg += `<text class="w-label" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.1).toFixed(1)}" text-anchor="middle">${pl.txt}</text></g>`;
-    });
-  }
 
   L.nodes.forEach((i, k) => {
     const s = res.symbols[i], r = nodeR(i);
@@ -1299,12 +1307,25 @@ function renderDirected() {
     svg += `<circle data-sel="${i}" data-etip="${esc(nTip)}" cx="${P[k][0].toFixed(1)}" cy="${P[k][1].toFixed(1)}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${esc(nTip)}</title></circle>`;
     if (big) svg += `<text x="${P[k][0].toFixed(1)}" y="${(P[k][1] + 3).toFixed(1)}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
   });
+
+  if (weightsMode !== "off") {
+    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
+    const labels = placeEdgeLabels(labelCandidates, nodeBoxes, W, H);
+    labels.forEach((pl) => {
+      svg += `<text class="w-label ${pl.cls}" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.2).toFixed(1)}" text-anchor="middle" data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title>${pl.txt}</text>`;
+    });
+  }
   svg += "</svg>";
 
   const n = res.n;
   const matFormula = weighted
     ? `Non-symmetric matrix W<sub>dir</sub>: entry (i, j) is ${esc(wKey)}<sub>j</sub> (the target atom’s property) when atom i is bonded to atom j, and 0 otherwise.`
     : "Plain adjacency matrix A: entry (i, j) is 1 when atom i is bonded to atom j, and 0 otherwise.";
+  const hint = !isSmallGraph && arcsMode === "auto"
+    ? (sel === null
+      ? "Click any atom to expand its outgoing (blue) and incoming (green) arrows, or switch Arcs to All."
+      : `Showing outgoing (blue) and incoming (green) arrows for ${lab(sel)}. Click another atom or switch Arcs to All.`)
+    : "Outgoing arcs from a selected atom are blue; incoming arcs are green. Point at any arc to read its weight.";
 
   $("body").innerHTML = `
     <section>
@@ -1314,10 +1335,14 @@ function renderDirected() {
     </section>
     <section>
       <div class="row space"><h2>Directed graph diagram</h2>
-        <div class="row">${seg("dlayout", state.dirGraphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
-        <label class="row small"><input type="checkbox" id="dgW" ${state.dirGraphWeights ? "checked" : ""}>Arc weights</label>
-        <label class="row small"><input type="checkbox" id="dgH" ${state.dirGraphH ? "checked" : ""}>Hide hydrogens</label></div></div>
-      <div class="figure">${svg}<div class="readout" id="dirGraphReadout">Point at an arc or atom to read its weight. Overlapping labels are automatically hidden; hover any arc to inspect it.</div></div>
+        <div class="row">
+          ${seg("dlayout", state.dirGraphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
+          <span class="small muted">Arcs</span>${seg("darcs", arcsMode, [["auto", "Auto"], ["all", "All"]])}
+          <span class="small muted">Labels</span>${seg("dw", weightsMode, [["auto", "Auto"], ["all", "All"], ["off", "Off"]])}
+          <label class="row small"><input type="checkbox" id="dgH" ${state.dirGraphH ? "checked" : ""}>Hide hydrogens</label>
+        </div>
+      </div>
+      <div class="figure">${svg}<div class="readout" id="dirGraphReadout">${hint}</div></div>
       ${state.dirGraphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="dirRelayout">Lay out again from the current 3D view</button></div>` : ""}
     </section>
     <section>
