@@ -196,6 +196,7 @@ table.data tr.sel td { background: var(--accent-soft); }
 .seg button { border: 0; background: var(--sheet); padding: 5px 11px; cursor: pointer; color: var(--ink2); }
 .seg button + button { border-left: 1px solid var(--line2); }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); font-weight: 500; }
+.seg button:disabled { opacity: .42; cursor: not-allowed; }
 
 .figure { border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); padding: 12px; }
 .matrix-wrap { position: relative; }
@@ -216,6 +217,13 @@ pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 36
 .graph-svg circle { stroke: rgba(0,0,0,.35); stroke-width: 1; cursor: pointer; }
 .graph-svg circle.sel { stroke: var(--accent); stroke-width: 3; }
 .graph-svg text { font: 500 9px var(--sans); fill: #1D2A31; pointer-events: none; }
+.graph-svg path.arc { fill: none; stroke: var(--ink3); stroke-width: 1.25; }
+.graph-svg path.arc.out { stroke: var(--accent); stroke-width: 2.1; }
+.graph-svg path.arc.in { stroke: var(--ok); stroke-width: 2.1; }
+.graph-svg rect.w-pill { fill: var(--sheet); stroke: var(--line2); stroke-width: 0.85; }
+.graph-svg rect.w-pill.out { stroke: var(--accent); }
+.graph-svg rect.w-pill.in { stroke: var(--ok); }
+.graph-svg text.w-label { font: 500 9.5px var(--mono); fill: var(--ink); pointer-events: none; }
 
 .status { display: flex; align-items: center; gap: 14px; padding: 6px 18px; border-top: 1px solid var(--line); background: var(--panel); color: var(--ink2); font-size: 12px; }
 .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); display: inline-block; margin-right: 6px; }
@@ -299,7 +307,7 @@ pre.text { margin: 0; padding: 12px; font: 12px/1.55 var(--mono); max-height: 36
           <h1>Drop an .xyz file to see its molecular graph</h1>
           <p>Bonds are worked out from the distances between atoms, then checked, so you can trust the adjacency matrix and every index built from it. Trajectories with many frames work too.</p>
           <button class="btn primary" id="emptyOpen">Open .xyz file</button>
-          <div class="try" id="try">Or try <button class="link" data-ex="benzene">benzene</button><button class="link" data-ex="cubane">cubane</button><button class="link" data-ex="adamantane">adamantane</button></div>
+          <div class="try" id="try">Or try <button class="link" data-ex="hocl">HOCl</button><button class="link" data-ex="benzene">benzene</button><button class="link" data-ex="cubane">cubane</button><button class="link" data-ex="adamantane">adamantane</button></div>
         </div>
       </div>
       <div class="drop-glow" id="dropGlow" hidden>Drop the .xyz file to open it</div>
@@ -424,10 +432,28 @@ const runner = {
 };
 
 /* ---------------- state ---------------- */
-let DEFAULTS = null, LEGACY = null, ready = false, queued = null;
-let state = { settings: null, base: 1, tab: "bonds", pair: "", view: { h: true, labels: false, near: true }, graphH: false, graphLayout: "spring", matrixView: "map", centralityGraph: "heavy" };
+let DEFAULTS = null, LEGACY = null, PROPS = [], SUPPORTED = [], ready = false, queued = null;
+const propOf = (k) => PROPS.find((p) => p.key === k) || { key: k, label: k, short: k, unit: "", about: "", available: false };
+const fmtW = (v) => (v === null || v === undefined || !isFinite(v)) ? "–" : (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : sig(v, 4));
+let state = {
+  settings: null,
+  base: 1,
+  tab: "bonds",
+  pair: "",
+  view: { h: true, labels: false, near: true },
+  graphH: false,
+  graphWeights: true,
+  graphLayout: "spring",
+  matrixView: "map",
+  dirGraphH: false,
+  dirGraphWeights: true,
+  dirGraphLayout: "spring",
+  dirMatrixView: "map",
+  centralityGraph: "heavy",
+};
 let file = null;          // { name, text, frames: [...], frame }
 let res = null;           // latest analysis
+let lastError = null;     // latest ValueError (e.g. unsupported element)
 let sel = null;           // selected atom index
 let anSeq = 0;
 
@@ -452,13 +478,18 @@ function setEngine(kind, text) {
 async function boot() {
   const saved = restore();
   if (saved) Object.assign(state, { ...saved, file: undefined, view: { ...state.view, ...(saved.view || {}) } });
+  if (state.tab === "graph" || state.tab === "matrix" || state.tab === "spectrum") state.tab = "undirected";
   renderTabs(); renderBody();
   const timer = setTimeout(() => { if (!ready) setEngine("fail", "Python is taking unusually long. Check your connection, then reload the page."); }, 90000);
   try {
     await runner.init((t) => setEngine("busy", t));
     const o = await runner.call("options");
     DEFAULTS = o.defaults; LEGACY = o.legacy; RADII = o.radii; DEFAULT_R = o.default_radius;
+    PROPS = o.properties || []; SUPPORTED = o.supported_elements || [];
     state.settings = { ...DEFAULTS, ...(state.settings || {}) };
+    if (state.settings.weight && state.settings.weight !== "none" && !propOf(state.settings.weight).available) {
+      state.settings.weight = "Z";
+    }
     ready = true; clearTimeout(timer);
     setEngine("ready", runner.mode === "worker" ? "Python ready (runs in your browser, nothing is uploaded)" : "Python ready (runs in this page, nothing is uploaded)");
     document.querySelectorAll("[data-ex]").forEach((b) => (b.disabled = false));
@@ -481,7 +512,7 @@ async function openText(name, text, frame, fresh) {
   if (!r.ok) { toast(`${name}: ${r.error}`, 7000); return; }
   if (fresh) { state.settings.add = []; state.settings.remove = []; }
   file = { name, text, frames: r.frames, frame: Math.min(frame, r.frames.length - 1) };
-  sel = null; mol.reset = true; layoutCache = null;
+  sel = null; mol.reset = true; layoutCache = {};
   renderFileInfo();
   await analyse();
   save();
@@ -491,10 +522,9 @@ async function openExample(key) {
   const r = await runner.call("example", key);
   if (!r.ok) return toast(r.error);
   state.settings.add = []; state.settings.remove = [];
-  // keep the file text so a reload restores it
   file = { name: r.name, text: null, frames: r.frames, frame: 0, example: key };
   const src = PY_FILES[r.name]; file.text = src || "";
-  sel = null; mol.reset = true; layoutCache = null;
+  sel = null; mol.reset = true; layoutCache = {};
   renderFileInfo(); await analyse(); save();
 }
 
@@ -505,13 +535,33 @@ async function analyse() {
   try {
     const r = await runner.call("analyse", file.frame, JSON.stringify(state.settings), state.pair);
     if (seq !== anSeq) return;
-    if (!r.ok) { toast(r.error, 6000); return; }
+    if (!r.ok) {
+      res = null; lastError = r.error;
+      $("stageTop").hidden = true; $("stageBottom").hidden = true; $("inspector").hidden = true;
+      $("dlBtn").disabled = true;
+      mol.draw(); renderTabs(); renderBody();
+      toast(r.error, 7000);
+      return;
+    }
+    lastError = null;
+    $("stageTop").hidden = false; $("stageBottom").hidden = false;
     const bondsKey = r.bonds.map((b) => b[0] + "-" + b[1]).join(",");
-    if (!res || res.n !== r.n || res._bondsKey !== bondsKey) layoutCache = null;
+    if (!res || res.n !== r.n || res._bondsKey !== bondsKey) layoutCache = {};
     r._bondsKey = bondsKey;
     r._issueSet = new Map(r.issues.map((x) => [x.i, x]));
     r._nb = Array.from({ length: r.n }, () => []);
-    r.bonds.forEach(([i, j]) => { r._nb[i].push(j); r._nb[j].push(i); });
+    r._sumMap = new Map();
+    r._dirMap = new Map();
+    r.bonds.forEach((b) => {
+      const i = b[0], j = b[1];
+      const wSum = b.length > 5 ? b[5] : 1;
+      const wIJ = b.length > 6 ? b[6] : 1;
+      const wJI = b.length > 7 ? b[7] : 1;
+      r._nb[i].push(j); r._nb[j].push(i);
+      r._sumMap.set(Math.min(i, j) * 100000 + Math.max(i, j), wSum);
+      r._dirMap.set(i * 100000 + j, wIJ);
+      r._dirMap.set(j * 100000 + i, wJI);
+    });
     r._bondSet = new Set(r.bonds.map((b) => b[0] * 100000 + b[1]));
     res = r;
     if (sel !== null && sel >= res.n) sel = null;
@@ -522,6 +572,8 @@ async function analyse() {
 }
 const reanalyse = debounce(() => { save(); analyse(); }, 260);
 const isBonded = (i, j) => res && res._bondSet.has(Math.min(i, j) * 100000 + Math.max(i, j));
+const sumWeight = (i, j) => res ? res._sumMap.get(Math.min(i, j) * 100000 + Math.max(i, j)) : undefined;
+const dirWeight = (i, j) => res ? res._dirMap.get(i * 100000 + j) : undefined;
 
 function toggleBond(i, j) {
   const a = Math.min(i, j), b = Math.max(i, j), s = state.settings;
@@ -727,7 +779,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 function select(i) {
   sel = (i === null || i === sel) ? null : i;
   mol.draw(); renderInspector();
-  if (["graph", "atoms", "matrix", "indices"].includes(state.tab)) renderBody(true);
+  if (["undirected", "directed", "atoms", "indices"].includes(state.tab)) renderBody(true);
 }
 function renderInspector() {
   const box = $("inspector");
@@ -757,7 +809,13 @@ $("inspector").addEventListener("click", (e) => {
 /* =================================================================
    Tool panel
    ================================================================= */
-const TABS = [["bonds", "Bonds"], ["graph", "Graph"], ["matrix", "Matrix"], ["spectrum", "Spectrum"], ["indices", "Indices"], ["atoms", "Atoms"]];
+const TABS = [
+  ["bonds", "Bonds"],
+  ["undirected", "Undirected"],
+  ["directed", "Directed"],
+  ["indices", "Indices"],
+  ["atoms", "Atoms"],
+];
 function renderTabs() {
   $("tabs").innerHTML = TABS.map(([k, t]) => `<button role="tab" aria-selected="${state.tab === k}" data-tab="${k}">${t}${k === "bonds" && res && res.issues.length ? `<span class="n">${res.issues.length}</span>` : ""}</button>`).join("");
 }
@@ -765,10 +823,14 @@ $("tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-t
 function renderBody(keepScroll) {
   const body = $("body"), top = body.scrollTop;
   if (!res) {
+    if (lastError) {
+      body.innerHTML = `<section><div class="verdict bad"><strong>Unsupported structure</strong><p>${esc(lastError)}</p></div></section>`;
+      return;
+    }
     body.innerHTML = `<p class="note">${ready ? "Open an .xyz file or pick an example to fill this panel." : "This panel fills in once Python has started and a file is open."}</p>`;
     return;
   }
-  ({ bonds: renderBonds, graph: renderGraph, matrix: renderMatrix, spectrum: renderSpectrum, indices: renderIndices, atoms: renderAtoms })[state.tab]();
+  ({ bonds: renderBonds, undirected: renderUndirected, directed: renderDirected, indices: renderIndices, atoms: renderAtoms })[state.tab]();
   if (keepScroll) body.scrollTop = top;
 }
 
@@ -798,7 +860,7 @@ function renderBonds() {
       <h2>How bonds are decided</h2>
       <div class="rules">
         <label class="rule"><div class="rule-head"><input type="radio" name="rule" value="radii" ${s.rule === "radii" ? "checked" : ""}>Covalent radii</div>
-          <p>Two atoms are bonded when their distance is at most the factor × (r₁ + r₂), using the covalent radii of Cordero et al. (2008). Works for every element.</p>
+          <p>Two atoms are bonded when their distance is at most the factor × (r₁ + r₂), using the covalent radii of Cordero et al. (2008). Supported across the 16 main-group elements (H + Groups 13–17, Periods 2–4).</p>
           <div class="controls row"><span class="muted small">Factor</span><input type="number" id="scale" step="0.01" min="0.8" max="2" value="${s.scale}"><span class="muted small">gives C–C ${fix(s.scale * 1.52, 3)} Å, C–H ${fix(s.scale * 1.07, 3)} Å</span></div></label>
         <label class="rule"><div class="rule-head"><input type="radio" name="rule" value="table" ${s.rule === "table" ? "checked" : ""}>Pair table (the old desktop app)</div>
           <p>A fixed cutoff for each listed pair; other pairs use the factor × (r₁ + r₂). The old C–C value of 1.55 Å misses long C–C bonds, such as the 1.57 Å bonds of cubane.</p>
@@ -867,8 +929,11 @@ $("body").addEventListener("change", (e) => {
     reanalyse();
   }
   else if (t.id === "pairSel") { state.pair = t.value; save(); runner.call("histogram", file.frame, JSON.stringify(s), state.pair).then((h) => { if (h.ok) { res.histogram = h; drawHistogram(); } }); }
-  else if (t.id === "kmax") { s.kmax = Math.max(2, Math.min(200, Math.round(+t.value) || 30)); reanalyse(); }
-  else if (t.id === "gH") { state.graphH = t.checked; layoutCache = null; save(); renderGraph(); }
+  else if (t.id === "kmax" || t.id === "dirKmax") { s.kmax = Math.max(2, Math.min(200, Math.round(+t.value) || 30)); reanalyse(); }
+  else if (t.id === "gH") { state.graphH = t.checked; save(); renderUndirected(); }
+  else if (t.id === "gW") { state.graphWeights = t.checked; save(); renderUndirected(); }
+  else if (t.id === "dgH") { state.dirGraphH = t.checked; save(); renderDirected(); }
+  else if (t.id === "dgW") { state.dirGraphWeights = t.checked; save(); renderDirected(); }
 });
 $("body").addEventListener("click", (e) => {
   const s = state.settings, t = e.target;
@@ -879,33 +944,66 @@ $("body").addEventListener("click", (e) => {
   if (t.id === "preset") { s.table = { ...LEGACY }; s.fallback = DEFAULTS.fallback; renderBonds(); return reanalyse(); }
   const del = t.closest("[data-pdel]"); if (del) { const k = Object.keys(s.table)[+del.dataset.pdel]; const nt = { ...s.table }; delete nt[k]; s.table = nt; renderBonds(); return reanalyse(); }
   const seg = t.closest("[data-seg]"); if (seg) { const [key, val] = seg.dataset.seg.split(":"); return segChange(key, val); }
-  if (t.id === "relayout") { layoutCache = null; return renderGraph(); }
+  if (t.id === "relayout") { layoutCache = {}; return renderUndirected(); }
+  if (t.id === "dirRelayout") { layoutCache = {}; return renderDirected(); }
   if (t.id === "copyList") { navigator.clipboard?.writeText($("adjList").textContent).then(() => toast("Adjacency list copied.")); return; }
+  if (t.id === "dirCopyList") { navigator.clipboard?.writeText($("dirAdjList").textContent).then(() => toast("Directed adjacency list copied.")); return; }
   const sr = t.closest("[data-sel]"); if (sr) return select(+sr.dataset.sel);
 });
 function segChange(key, val) {
-  if (key === "diag") { state.settings.diagonal = val; reanalyse(); }
-  else if (key === "mview") { state.matrixView = val; save(); renderMatrix(); }
+  if (key === "weight") {
+    if (val === "legacy_z") { state.settings.weight = "none"; state.settings.diagonal = "Z"; }
+    else { state.settings.weight = val; state.settings.diagonal = "zero"; }
+    reanalyse();
+  }
+  else if (key === "mview") { state.matrixView = val; save(); renderUndirected(); }
+  else if (key === "dmview") { state.dirMatrixView = val; save(); renderDirected(); }
   else if (key === "cg") { state.centralityGraph = val; save(); renderIndices(); }
-  else if (key === "layout") { state.graphLayout = val; layoutCache = null; save(); renderGraph(); }
+  else if (key === "layout") { state.graphLayout = val; save(); renderUndirected(); }
+  else if (key === "dlayout") { state.dirGraphLayout = val; save(); renderDirected(); }
   document.querySelectorAll(`[data-seg^="${key}:"]`).forEach((b) => b.setAttribute("aria-pressed", b.dataset.seg === `${key}:${val}`));
 }
-const seg = (key, cur, opts) => `<div class="seg" role="group">${opts.map(([v, t]) => `<button data-seg="${key}:${v}" aria-pressed="${cur === v}">${t}</button>`).join("")}</div>`;
+const seg = (key, cur, opts) => `<div class="seg" role="group">${opts.map(([v, t, dis, tip]) => `<button data-seg="${key}:${v}" aria-pressed="${cur === v}" ${dis ? "disabled" : ""} ${tip ? `title="${esc(tip)}"` : ""}>${t}</button>`).join("")}</div>`;
 
-/* ---------------- Graph tab ---------------- */
-let layoutCache = null;
-function graphLayout() {
-  const nodes = res.symbols.map((_, i) => i).filter((i) => !state.graphH || res.symbols[i] !== "H");
-  const key = `${state.graphH}|${state.graphLayout}|${res._bondsKey}|${res.n}`;
-  if (layoutCache && layoutCache.key === key) return layoutCache;
+function activeWeightMode(includeLegacy = true) {
+  const s = state.settings;
+  if (includeLegacy && s.diagonal === "Z" && (!s.weight || s.weight === "none")) return "legacy_z";
+  return s.weight || "Z";
+}
+
+function mirezSelectorHTML(includeLegacy = true) {
+  const mode = activeWeightMode(includeLegacy);
+  const propKeys = ["Z", "M", "R", "E", "I"];
+  const opts = propKeys.map((k) => {
+    const p = propOf(k);
+    return [k, p.short, !p.available, p.about];
+  });
+  opts.push(["none", "Unweighted (A)", false, "Plain 0/1 adjacency matrix A with zero diagonal."]);
+  if (includeLegacy) {
+    opts.push(["legacy_z", "Legacy A + diag(Z)", false, "Original desktop app matrix with Z on the diagonal and 1 on bonds."]);
+  }
+  const activeKey = mode === "legacy_z" ? "Z" : mode;
+  const note = mode === "legacy_z"
+    ? "Original desktop app matrix: Z on the diagonal and 1 on covalent bonds."
+    : mode === "none"
+    ? "Plain 0/1 adjacency matrix with zero diagonal."
+    : esc(propOf(activeKey).about);
+  return `<div class="row" style="margin-bottom:8px"><span class="small muted">Property (MIREZ)</span>${seg("weight", mode, opts)}</div>
+    <p class="note small" style="margin-top:0">${note}</p>`;
+}
+
+/* ---------------- Shared 2D layout ---------------- */
+let layoutCache = {};
+function graphLayout(hideH, layoutMode) {
+  const nodes = res.symbols.map((_, i) => i).filter((i) => !hideH || res.symbols[i] !== "H");
+  const key = `${hideH}|${layoutMode}|${res._bondsKey}|${res.n}`;
+  if (layoutCache[key]) return layoutCache[key];
   const id = new Map(nodes.map((v, k) => [v, k])), n = nodes.length;
   const edges = res.bonds.filter(([i, j]) => id.has(i) && id.has(j)).map(([i, j]) => [id.get(i), id.get(j)]);
-  // start from the 3D view's orientation, so the drawing resembles the molecule
   if (mol.reset) mol.orient();
   const c = mol.center, R = mol.R;
   let pos = nodes.map((i) => { const p = res.coords[i], d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]]; return [R[0][0] * d[0] + R[0][1] * d[1] + R[0][2] * d[2], -(R[1][0] * d[0] + R[1][1] * d[1] + R[1][2] * d[2])]; });
-  if (state.graphLayout === "spring" && n > 2 && n <= 700) {
-    // Fruchterman–Reingold
+  if (layoutMode === "spring" && n > 2 && n <= 700) {
     let mx = 0; pos.forEach((p) => (mx = Math.max(mx, Math.abs(p[0]), Math.abs(p[1]))));
     pos = pos.map((p, k) => [p[0] / (mx || 1) + 1e-3 * Math.sin(k * 12.9898), p[1] / (mx || 1) + 1e-3 * Math.cos(k * 78.233)]);
     const k0 = Math.sqrt(4 / n), iters = n > 300 ? 150 : 300;
@@ -928,113 +1026,336 @@ function graphLayout() {
   pos.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
   const span = Math.max(x1 - x0, y1 - y0) || 1;
   pos = pos.map(([x, y]) => [(x - (x0 + x1) / 2) / span, (y - (y0 + y1) / 2) / span]);
-  layoutCache = { key, nodes, edges, pos, aspect: Math.min(1, Math.max(0.55, (y1 - y0) / (x1 - x0 || 1))) };
-  return layoutCache;
+  layoutCache[key] = { key, nodes, edges, pos, aspect: Math.min(1, Math.max(0.55, (y1 - y0) / (x1 - x0 || 1))) };
+  return layoutCache[key];
 }
-function renderGraph() {
-  const L = graphLayout(), W = 600, H = Math.round(W * Math.max(0.62, L.aspect) + 20), pad = 26;
+
+function spectrumBlockHTML(spec, label, diagZ, isDir, kInputId, eigChartId, momChartId) {
+  const trap = !isDir && spec.energy_is_trace && diagZ;
+  return `
+    <section>
+      <h2>Energy (${label})</h2>
+      <div class="figures">
+        <div><div class="l">Σ |λ<sub>i</sub>| of W</div><div class="v">${sig(spec.energy_abs, 10)}</div></div>
+        <div><div class="l">Σ |λ<sub>i</sub> − tr W / n|</div><div class="v">${sig(spec.energy_centred, 10)}</div></div>
+        <div><div class="l">Graph energy of A (Gutman)</div><div class="v">${sig(res.energy_A, 10)}</div></div>
+      </div>
+      ${trap ? `<div class="callout">Every eigenvalue of W is positive here, so Σ |λ| is just the trace, the sum of the atomic numbers (${int(spec.trace)}). It would be the same number with any set of bonds, so it cannot tell structures apart.</div>` : ""}
+    </section>
+    <section>
+      <h2>Eigenvalues of W</h2>
+      <p class="note">${plural(spec.eigenvalues.length, "eigenvalue")}, largest first: from ${sig(spec.eigenvalues[0], 6)} down to ${sig(spec.eigenvalues[spec.eigenvalues.length - 1], 6)}.</p>
+      <div class="figure" id="${eigChartId}"></div>
+    </section>
+    <section>
+      <div class="row space"><h2>Spectral moments</h2><span class="row small muted">k up to <input type="number" id="${kInputId}" min="2" max="200" value="${state.settings.kmax}" style="width:70px"></span></div>
+      <p class="note">μ<sub>k</sub> = Σ λ<sub>i</sub><sup>k</sup> = tr(W<sup>k</sup>). Plotted as log₁₀ μ<sub>k</sub>${spec.moments.some((m) => m !== null && m <= 0) ? "; zero or negative values are left out" : ""}.</p>
+      <div class="figure" id="${momChartId}"></div>
+    </section>`;
+}
+
+/* ---------------- Tab 1: Undirected weighted graph (W_ij = p_i + p_j) ---------------- */
+function renderUndirected() {
+  const L = graphLayout(state.graphH, state.graphLayout), W = 600, H = Math.round(W * Math.max(0.62, L.aspect) + 20), pad = 26;
   const sc = Math.min(W - 2 * pad, (H - 2 * pad) / Math.max(L.aspect, 0.55));
   const P = L.pos.map(([x, y]) => [W / 2 + x * sc, H / 2 + y * sc]);
   const big = L.nodes.length <= 70;
-  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Molecular graph">`;
-  L.edges.forEach(([a, b]) => { const hl = sel !== null && (L.nodes[a] === sel || L.nodes[b] === sel); svg += `<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}" class="${hl ? "hl" : ""}"/>`; });
+  const wKey = state.settings.weight || "Z";
+  const weighted = wKey !== "none";
+  const showW = state.graphWeights && weighted && L.edges.length <= 120;
+
+  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Undirected weighted molecular graph">`;
+  L.edges.forEach(([a, b]) => {
+    const hl = sel !== null && (L.nodes[a] === sel || L.nodes[b] === sel);
+    svg += `<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}" class="${hl ? "hl" : ""}"/>`;
+  });
+  if (showW) {
+    L.edges.forEach(([a, b]) => {
+      const w = sumWeight(L.nodes[a], L.nodes[b]);
+      if (w === undefined) return;
+      const txt = fmtW(w);
+      const mx = (P[a][0] + P[b][0]) / 2, my = (P[a][1] + P[b][1]) / 2;
+      const pw = Math.max(16, txt.length * 6.2 + 8), ph = 14;
+      svg += `<rect class="w-pill" x="${mx - pw / 2}" y="${my - ph / 2}" width="${pw}" height="${ph}" rx="3"/>`;
+      svg += `<text class="w-label" x="${mx}" y="${my + 3.2}" text-anchor="middle">${txt}</text>`;
+    });
+  }
   L.nodes.forEach((i, k) => {
-    const s = res.symbols[i], r = s === "H" ? (big ? 5 : 3.5) : (big ? 9 : 5.5);
+    const s = res.symbols[i], r = s === "H" ? (big ? 7 : 3.5) : (big ? 10 : 5.5);
     svg += `<circle data-sel="${i}" cx="${P[k][0]}" cy="${P[k][1]}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${lab(i)}, ${plural(res._nb[i].length, "bond")}</title></circle>`;
-    if (big && s !== "H") svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I", "Mo", "W", "K", "Rb", "Cs", "Ru", "Rh", "Pd", "Ir", "Os"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
+    if (big) svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
   });
   svg += "</svg>";
-  const heavy = res.graphs.heavy, full = res.graphs.full;
+
+  const n = res.n, diagZ = state.settings.diagonal === "Z";
+  const matFormula = diagZ
+    ? "Legacy matrix: W<sub>ii</sub> = Z<sub>i</sub> on the diagonal and W<sub>ij</sub> = 1 on covalent bonds."
+    : weighted
+    ? `Symmetric matrix W: W<sub>ij</sub> = ${esc(wKey)}<sub>i</sub> + ${esc(wKey)}<sub>j</sub> on covalent bonds, and W<sub>ii</sub> = 0 on the diagonal.`
+    : "Plain adjacency matrix A: W<sub>ij</sub> = 1 on covalent bonds, and W<sub>ii</sub> = 0 on the diagonal.";
+
   $("body").innerHTML = `
     <section>
-      <div class="row space"><h2>Molecular graph</h2>
+      <h2>Undirected weighted graph (w<sub>ij</sub> = p<sub>i</sub> + p<sub>j</sub>)</h2>
+      <p class="note">Each covalent bond is a single undirected edge carrying the sum of its two endpoint atom properties, with zeros on the matrix diagonal.</p>
+      ${mirezSelectorHTML(true)}
+    </section>
+    <section>
+      <div class="row space"><h2>Graph diagram</h2>
         <div class="row">${seg("layout", state.graphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
+        <label class="row small"><input type="checkbox" id="gW" ${state.graphWeights ? "checked" : ""} ${weighted ? "" : "disabled"}>Edge weights</label>
         <label class="row small"><input type="checkbox" id="gH" ${state.graphH ? "checked" : ""}>Hide hydrogens</label></div></div>
-      <p class="note">${state.graphH ? `The hydrogen-suppressed graph: ${plural(heavy.nodes, "node")}, ${plural(heavy.edges, "edge")}. This is the graph the Wiener index is defined on.` : `The full graph: ${plural(full.nodes, "node")}, ${plural(full.edges, "edge")}.`} ${state.graphLayout === "spring" ? "Spring layout spreads the nodes out; positions carry no meaning, only the connections do." : "Nodes are placed as in the 3D view, flattened."}</p>
       <div class="figure">${svg}</div>
       ${state.graphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="relayout">Lay out again from the current 3D view</button></div>` : ""}
     </section>
     <section>
+      <div class="row space"><h2>Adjacency matrix W</h2>${seg("mview", state.matrixView, [["map", "Map"], ["numbers", "Numbers"]])}</div>
+      <p class="note">${matFormula}</p>
+      <div class="figure matrix-wrap">${state.matrixView === "map" ? `<canvas id="heat" aria-label="Undirected weighted adjacency matrix"></canvas><div class="readout" id="readout">Point at a cell to read it. Click to select that atom.</div>`
+        : n <= 150 ? `<pre class="text">${matrixText(false)}</pre>` : `<p class="muted">With ${n} atoms the numbers are too many to show here. Download the matrix as a .csv file instead.</p>`}</div>
+    </section>
+    <section>
       <div class="row space"><h2>Adjacency list</h2><button class="btn small" id="copyList">Copy</button></div>
-      <pre class="text" id="adjList">${res.symbols.map((s, i) => `${(lab(i) + ":").padEnd(7)}${res._nb[i].slice().sort((a, b) => a - b).map(lab).join("  ") || "(none)"}`).join("\n")}</pre>
-    </section>`;
+      <pre class="text" id="adjList">${res.symbols.map((s, i) => {
+        const nbs = res._nb[i].slice().sort((a, b) => a - b);
+        const listStr = nbs.map((j) => weighted ? `${lab(j)} (${fmtW(sumWeight(i, j))})` : lab(j)).join("  ");
+        return `${(lab(i) + ":").padEnd(7)}${listStr || "(none)"}`;
+      }).join("\n")}</pre>
+    </section>
+    ${spectrumBlockHTML(res.spectrum, "undirected", diagZ, false, "kmax", "eigChart", "momChart")}`;
+
+  if (state.matrixView === "map") drawHeat("heat", "readout", false);
+  const sp = res.spectrum;
+  $("eigChart").innerHTML = dotChart(sp.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
+  $("momChart").innerHTML = dotChart(sp.moments.map((v, k) => [k + 1, v]).filter(([, v]) => v !== null && v > 0).map(([k, v]) => [k, Math.log10(v)]), "k", "log₁₀ μk", false, true);
 }
 
-/* ---------------- Matrix tab ---------------- */
-function renderMatrix() {
-  const s = state.settings, n = res.n;
+/* ---------------- Tab 2: Directed target-weighted graph (W_ij = p_j) ---------------- */
+function renderDirected() {
+  const L = graphLayout(state.dirGraphH, state.dirGraphLayout), W = 600, H = Math.round(W * Math.max(0.62, L.aspect) + 20), pad = 28;
+  const sc = Math.min(W - 2 * pad, (H - 2 * pad) / Math.max(L.aspect, 0.55));
+  const P = L.pos.map(([x, y]) => [W / 2 + x * sc, H / 2 + y * sc]);
+  const big = L.nodes.length <= 70;
+  const wKey = state.settings.weight || "Z";
+  const weighted = wKey !== "none";
+  const showW = state.dirGraphWeights && L.edges.length <= 80;
+
+  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Directed weighted molecular graph">
+    <defs>
+      <marker id="arr-def" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
+        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--ink3)"/>
+      </marker>
+      <marker id="arr-out" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--accent)"/>
+      </marker>
+      <marker id="arr-in" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--ok)"/>
+      </marker>
+    </defs>`;
+
+  const nodeR = (idx) => {
+    const s = res.symbols[idx];
+    return s === "H" ? (big ? 7 : 3.5) : (big ? 10.5 : 5.5);
+  };
+
+  // Draw two curved arcs per bond: a -> b (weight p_b) and b -> a (weight p_a)
+  const arcLabels = [];
+  L.edges.forEach(([a, b]) => {
+    const ia = L.nodes[a], ib = L.nodes[b];
+    const [x1, y1] = P[a], [x2, y2] = P[b];
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const nx = -uy, ny = ux; // unit normal
+    const bow = Math.min(13, Math.max(6, len * 0.13));
+
+    for (const [fromK, toK, fromAtom, toAtom, sign] of [[a, b, ia, ib, 1], [b, a, ib, ia, -1]]) {
+      const [sx, sy] = P[fromK], [tx, ty] = P[toK];
+      const rStart = nodeR(fromAtom) + 1.5;
+      const rEnd = nodeR(toAtom) + 3.0;
+      const dux = (tx - sx) / len, duy = (ty - sy) / len;
+      const p0x = sx + dux * rStart + nx * sign * 2.2;
+      const p0y = sy + duy * rStart + ny * sign * 2.2;
+      const p2x = tx - dux * rEnd + nx * sign * 2.2;
+      const p2y = ty - duy * rEnd + ny * sign * 2.2;
+      const cx = (sx + tx) / 2 + nx * sign * bow * 2;
+      const cy = (sy + ty) / 2 + ny * sign * bow * 2;
+
+      const isOut = sel !== null && fromAtom === sel;
+      const isIn = sel !== null && toAtom === sel;
+      const cls = isOut ? "arc out" : isIn ? "arc in" : "arc";
+      const mk = isOut ? "url(#arr-out)" : isIn ? "url(#arr-in)" : "url(#arr-def)";
+      svg += `<path d="M ${p0x.toFixed(1)} ${p0y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${p2x.toFixed(1)} ${p2y.toFixed(1)}" class="${cls}" marker-end="${mk}"/>`;
+
+      if (showW) {
+        const w = dirWeight(fromAtom, toAtom);
+        if (w !== undefined) {
+          // Quadratic Bezier midpoint at t = 0.5: 0.25*P0 + 0.5*C + 0.25*P2
+          const lx = 0.25 * p0x + 0.5 * cx + 0.25 * p2x;
+          const ly = 0.25 * p0y + 0.5 * cy + 0.25 * p2y;
+          arcLabels.push({ lx, ly, txt: fmtW(w), cls: isOut ? "out" : isIn ? "in" : "", tip: `${lab(fromAtom)} → ${lab(toAtom)}: ${fmtW(w)}` });
+        }
+      }
+    }
+  });
+
+  arcLabels.forEach((al) => {
+    const pw = Math.max(15, al.txt.length * 6.0 + 7), ph = 13.5;
+    svg += `<g><title>${esc(al.tip)}</title><rect class="w-pill ${al.cls}" x="${(al.lx - pw / 2).toFixed(1)}" y="${(al.ly - ph / 2).toFixed(1)}" width="${pw}" height="${ph}" rx="3"/>`;
+    svg += `<text class="w-label" x="${al.lx.toFixed(1)}" y="${(al.ly + 3.1).toFixed(1)}" text-anchor="middle">${al.txt}</text></g>`;
+  });
+
+  L.nodes.forEach((i, k) => {
+    const s = res.symbols[i], r = nodeR(i);
+    svg += `<circle data-sel="${i}" cx="${P[k][0]}" cy="${P[k][1]}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${lab(i)}, ${plural(res._nb[i].length, "bond")}</title></circle>`;
+    if (big) svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
+  });
+  svg += "</svg>";
+
+  const n = res.n;
+  const matFormula = weighted
+    ? `Non-symmetric matrix W<sub>dir</sub>: entry (i, j) is ${esc(wKey)}<sub>j</sub> (the target atom’s property) when atom i is bonded to atom j, and 0 otherwise.`
+    : "Plain adjacency matrix A: entry (i, j) is 1 when atom i is bonded to atom j, and 0 otherwise.";
+
   $("body").innerHTML = `
     <section>
-      <div class="row space"><h2>Adjacency matrix</h2>${seg("mview", state.matrixView, [["map", "Map"], ["numbers", "Numbers"]])}</div>
-      <p class="note">W<sub>ij</sub> = 1 when atoms i and j are bonded, 0 otherwise. Rows and columns follow the atom order in the file. In the map, black cells are bonds, outlined cells are the diagonal (coloured by element) and the coloured strips mark which element each row is.</p>
-      <div class="row" style="margin-bottom:10px"><span class="small muted">Diagonal W<sub>ii</sub></span>${seg("diag", s.diagonal, [["Z", "Atomic number Z"], ["zero", "Zero (plain adjacency A)"]])}</div>
-      <div class="figure matrix-wrap">${state.matrixView === "map" ? `<canvas id="heat" aria-label="Adjacency matrix as a map"></canvas><div class="readout" id="readout">Point at a cell to read it. Click to select that atom.</div>`
-        : n <= 150 ? `<pre class="text">${matrixText()}</pre>` : `<p class="muted">With ${n} atoms the numbers are too many to show here. Download the matrix as a .csv file instead.</p>`}</div>
-      <p class="note small" style="margin-top:8px">${s.diagonal === "Z" ? "This is the matrix the old app called the identity-encoded adjacency matrix." : "This is the plain adjacency matrix A used for graph energy and the Estrada index."}</p>
-    </section>`;
-  if (state.matrixView === "map") drawHeat();
+      <h2>Directed target-weighted graph (w<sub>i → j</sub> = p<sub>j</sub>)</h2>
+      <p class="note">Each covalent bond splits into two directed arcs: i → j carries the target atom’s property p<sub>j</sub>, and j → i carries p<sub>i</sub>. The resulting matrix is non-symmetric whenever bonded atoms differ.</p>
+      ${mirezSelectorHTML(false)}
+    </section>
+    <section>
+      <div class="row space"><h2>Directed graph diagram</h2>
+        <div class="row">${seg("dlayout", state.dirGraphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
+        <label class="row small"><input type="checkbox" id="dgW" ${state.dirGraphWeights ? "checked" : ""}>Arc weights</label>
+        <label class="row small"><input type="checkbox" id="dgH" ${state.dirGraphH ? "checked" : ""}>Hide hydrogens</label></div></div>
+      <div class="figure">${svg}</div>
+      ${state.dirGraphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="dirRelayout">Lay out again from the current 3D view</button></div>` : ""}
+    </section>
+    <section>
+      <div class="row space"><h2>Directed adjacency matrix W<sub>dir</sub></h2>${seg("dmview", state.dirMatrixView, [["map", "Map"], ["numbers", "Numbers"]])}</div>
+      <p class="note">${matFormula}</p>
+      <div class="figure matrix-wrap">${state.dirMatrixView === "map" ? `<canvas id="dirHeat" aria-label="Directed weighted adjacency matrix"></canvas><div class="readout" id="dirReadout">Point at a cell (row i → column j) to read it. Click to select atom i.</div>`
+        : n <= 150 ? `<pre class="text">${matrixText(true)}</pre>` : `<p class="muted">With ${n} atoms the numbers are too many to show here. Download the matrix as a .csv file instead.</p>`}</div>
+    </section>
+    <section>
+      <div class="row space"><h2>Directed adjacency list (outgoing arcs i → j)</h2><button class="btn small" id="dirCopyList">Copy</button></div>
+      <pre class="text" id="dirAdjList">${res.symbols.map((s, i) => {
+        const nbs = res._nb[i].slice().sort((a, b) => a - b);
+        const listStr = nbs.map((j) => weighted ? `→${lab(j)} (${fmtW(dirWeight(i, j))})` : `→${lab(j)}`).join("  ");
+        return `${(lab(i) + ":").padEnd(7)}${listStr || "(none)"}`;
+      }).join("\n")}</pre>
+    </section>
+    ${spectrumBlockHTML(res.spectrum_directed, "directed", false, true, "dirKmax", "dirEigChart", "dirMomChart")}`;
+
+  if (state.dirMatrixView === "map") drawHeat("dirHeat", "dirReadout", true);
+  const spd = res.spectrum_directed;
+  $("dirEigChart").innerHTML = dotChart(spd.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
+  $("dirMomChart").innerHTML = dotChart(spd.moments.map((v, k) => [k + 1, v]).filter(([, v]) => v !== null && v > 0).map(([k, v]) => [k, Math.log10(v)]), "k", "log₁₀ μk", false, true);
 }
-function matrixText() {
-  const n = res.n, diagZ = state.settings.diagonal === "Z", w = diagZ ? Math.max(...res.Z).toString().length + 1 : 2;
-  const rows = [];
-  for (let i = 0; i < n; i++) { let r = ""; for (let j = 0; j < n; j++) r += String(i === j ? (diagZ ? res.Z[i] : 0) : isBonded(i, j) ? 1 : 0).padStart(w); rows.push(r.slice(1)); }
-  return rows.join("\n");
+
+/* ---------------- Matrix helpers for both Undirected and Directed ---------------- */
+function matrixText(directed) {
+  const n = res.n, diagZ = !directed && state.settings.diagonal === "Z";
+  const grid = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => {
+    if (i === j) return diagZ ? String(res.Z[i]) : "0";
+    if (!isBonded(i, j)) return "0";
+    const w = directed ? dirWeight(i, j) : sumWeight(i, j);
+    return w !== undefined ? fmtW(w) : "1";
+  }));
+  const colW = Math.max(2, ...grid.flat().map((s) => s.length)) + 1;
+  return grid.map((row) => row.map((v) => v.padStart(colW)).join("").slice(1)).join("\n");
 }
-function drawHeat() {
-  const cv = $("heat"), n = res.n, strip = n > 1 ? 6 : 0;
+function drawHeat(canvasId, readoutId, directed) {
+  const cv = $(canvasId);
+  if (!cv) return;
+  const n = res.n, strip = n > 1 ? 6 : 0;
   const cssW = Math.min(cv.parentElement.clientWidth - 24, 560), cell = Math.max(1, Math.floor((cssW - strip) / n)), size = strip + cell * n;
   const dpr = window.devicePixelRatio || 1;
   cv.width = size * dpr; cv.height = size * dpr; cv.style.width = size + "px"; cv.style.height = size + "px";
   const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = cssVar("--sheet"); ctx.fillRect(0, 0, size, size);
-  const ink = cssVar("--bar"), line = cssVar("--line"), diagZ = state.settings.diagonal === "Z";
+  const line = cssVar("--line"), diagZ = !directed && state.settings.diagonal === "Z";
   if (cell >= 5) { ctx.strokeStyle = line; ctx.lineWidth = 0.5; for (let k = 0; k <= n; k++) { const p = strip + k * cell + 0.25; ctx.beginPath(); ctx.moveTo(strip, p); ctx.lineTo(size, p); ctx.moveTo(p, strip); ctx.lineTo(p, size); ctx.stroke(); } }
   for (let i = 0; i < n; i++) {
     ctx.fillStyle = colorOf(res.symbols[i]); ctx.fillRect(0, strip + i * cell, strip - 1, cell); ctx.fillRect(strip + i * cell, 0, cell, strip - 1);
-    if (diagZ) { const x = strip + i * cell; ctx.fillStyle = colorOf(res.symbols[i]); ctx.fillRect(x, x, cell, cell); if (cell >= 4) { ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, x + 0.5, cell - 1, cell - 1); } }
+    const x = strip + i * cell;
+    if (diagZ) {
+      ctx.fillStyle = colorOf(res.symbols[i]); ctx.fillRect(x, x, cell, cell);
+      if (cell >= 4) { ctx.strokeStyle = cssVar("--accent"); ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, x + 0.5, cell - 1, cell - 1); }
+    } else if (cell >= 4) {
+      ctx.strokeStyle = line; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(x + 1, x + 1); ctx.lineTo(x + cell - 1, x + cell - 1); ctx.stroke();
+    }
   }
-  ctx.fillStyle = ink;
-  res.bonds.forEach(([i, j]) => { ctx.fillRect(strip + j * cell, strip + i * cell, cell, cell); ctx.fillRect(strip + i * cell, strip + j * cell, cell, cell); });
-  if (diagZ && cell >= 14) { ctx.font = `500 ${Math.min(11, cell - 4)}px ${cssVar("--mono") || "monospace"}`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#1D2A31"; for (let i = 0; i < n; i++) ctx.fillText(res.Z[i], strip + (i + 0.5) * cell, strip + (i + 0.5) * cell); }
+  const allW = [];
+  res.bonds.forEach((b) => {
+    if (directed) { allW.push(b.length > 6 ? b[6] : 1, b.length > 7 ? b[7] : 1); }
+    else { allW.push(b.length > 5 ? b[5] : 1); }
+  });
+  const wMax = Math.max(1e-9, ...allW);
+  const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const paintCell = (r, c, w) => {
+    const t = 0.35 + 0.65 * Math.min(1, w / wMax);
+    ctx.fillStyle = dark ? `rgba(133,168,242,${t.toFixed(3)})` : `rgba(29,42,49,${t.toFixed(3)})`;
+    ctx.fillRect(strip + c * cell, strip + r * cell, cell, cell);
+  };
+  res.bonds.forEach((b) => {
+    const i = b[0], j = b[1];
+    if (directed) {
+      paintCell(i, j, b.length > 6 ? b[6] : 1);
+      paintCell(j, i, b.length > 7 ? b[7] : 1);
+    } else {
+      const w = b.length > 5 ? b[5] : 1;
+      paintCell(i, j, w);
+      paintCell(j, i, w);
+    }
+  });
+  if (cell >= 20) {
+    ctx.font = `500 ${Math.min(11, Math.floor(cell * 0.42))}px ${cssVar("--mono") || "monospace"}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (diagZ) {
+      ctx.fillStyle = "#1D2A31";
+      for (let i = 0; i < n; i++) ctx.fillText(res.Z[i], strip + (i + 0.5) * cell, strip + (i + 0.5) * cell);
+    } else {
+      ctx.fillStyle = cssVar("--ink3");
+      for (let i = 0; i < n; i++) ctx.fillText("0", strip + (i + 0.5) * cell, strip + (i + 0.5) * cell);
+    }
+    ctx.fillStyle = dark ? "#12181B" : "#FFFFFF";
+    res.bonds.forEach((b) => {
+      const i = b[0], j = b[1];
+      if (directed) {
+        ctx.fillText(fmtW(b.length > 6 ? b[6] : 1), strip + (j + 0.5) * cell, strip + (i + 0.5) * cell);
+        ctx.fillText(fmtW(b.length > 7 ? b[7] : 1), strip + (i + 0.5) * cell, strip + (j + 0.5) * cell);
+      } else {
+        const txt = fmtW(b.length > 5 ? b[5] : 1);
+        ctx.fillText(txt, strip + (j + 0.5) * cell, strip + (i + 0.5) * cell);
+        ctx.fillText(txt, strip + (i + 0.5) * cell, strip + (j + 0.5) * cell);
+      }
+    });
+  }
   if (sel !== null) { ctx.fillStyle = "rgba(35,87,194,.16)"; ctx.fillRect(strip, strip + sel * cell, cell * n, cell); ctx.fillRect(strip + sel * cell, strip, cell, cell * n); }
   const cellAt = (e) => { const r = cv.getBoundingClientRect(); const x = e.clientX - r.left - strip, y = e.clientY - r.top - strip; if (x < 0 || y < 0) return null; const j = Math.floor(x / cell), i = Math.floor(y / cell); return i < n && j < n ? [i, j] : null; };
   cv.onmousemove = (e) => {
-    const c = cellAt(e), out = $("readout"); if (!c) return;
-    const [i, j] = c;
-    const v = i === j ? (diagZ ? res.Z[i] : 0) : isBonded(i, j) ? 1 : 0;
-    out.innerHTML = i === j ? `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${v}</b> (diagonal)` : `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${v}</b>, distance ${fix(dist(res.coords[i], res.coords[j]), 3)} Å`;
+    const c = cellAt(e), out = $(readoutId); if (!c) return;
+    const [i, j] = c, wKey = state.settings.weight || "Z";
+    if (i === j) {
+      const v = diagZ ? res.Z[i] : 0;
+      out.innerHTML = `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${v}</b> (diagonal)`;
+    } else if (isBonded(i, j)) {
+      if (directed) {
+        const w = dirWeight(i, j);
+        const note = wKey !== "none" ? ` (arc ${lab(i)} → ${lab(j)}: target ${esc(wKey)}<sub>${lab(j)}</sub> = ${fmtW(w)})` : "";
+        out.innerHTML = `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${fmtW(w)}</b>${note}, distance ${fix(dist(res.coords[i], res.coords[j]), 3)} Å`;
+      } else {
+        const w = sumWeight(i, j);
+        const sumNote = (wKey !== "none" && res.atom_props) ? ` (${esc(wKey)}: ${fmtW(res.atom_props[i])} + ${fmtW(res.atom_props[j])})` : "";
+        out.innerHTML = `Row ${lab(i)}, column ${lab(j)}: <b class="mono">${fmtW(w)}</b>${sumNote}, distance ${fix(dist(res.coords[i], res.coords[j]), 3)} Å`;
+      }
+    } else {
+      out.innerHTML = `Row ${lab(i)}, column ${lab(j)}: <b class="mono">0</b> (not bonded), distance ${fix(dist(res.coords[i], res.coords[j]), 3)} Å`;
+    }
   };
   cv.onclick = (e) => { const c = cellAt(e); if (c) select(c[0]); };
 }
 
-/* ---------------- Spectrum tab ---------------- */
-function renderSpectrum() {
-  const sp = res.spectrum, s = state.settings, diagZ = s.diagonal === "Z";
-  const trap = sp.energy_is_trace && diagZ;
-  $("body").innerHTML = `
-    <section>
-      <h2>Energy</h2>
-      <p class="note">Computed from the eigenvalues λ of W${diagZ ? " (diagonal = Z)" : " (diagonal = 0)"}, and of the plain adjacency matrix A.</p>
-      <div class="figures">
-        <div><div class="l">Σ |λ<sub>i</sub>| of W</div><div class="v">${sig(sp.energy_abs, 10)}</div></div>
-        <div><div class="l">Σ |λ<sub>i</sub> − tr W / n| of W</div><div class="v">${sig(sp.energy_centred, 10)}</div></div>
-        <div><div class="l">Graph energy of A (Gutman)</div><div class="v">${sig(res.energy_A, 10)}</div></div>
-      </div>
-      ${trap ? `<div class="callout">Every eigenvalue of W is positive here, so Σ |λ| is just the trace, the sum of the atomic numbers (${int(sp.trace)}). It would be the same number with any set of bonds, so it cannot tell structures apart. The centred energy, or the graph energy of A, does change with the bonds.</div>` : ""}
-    </section>
-    <section>
-      <h2>Eigenvalues of W</h2>
-      <p class="note">${plural(sp.eigenvalues.length, "eigenvalue")}, largest first: from ${sig(sp.eigenvalues[0], 6)} down to ${sig(sp.eigenvalues[sp.eigenvalues.length - 1], 6)}.</p>
-      <div class="figure" id="eigChart"></div>
-    </section>
-    <section>
-      <div class="row space"><h2>Spectral moments</h2><span class="row small muted">k up to <input type="number" id="kmax" min="2" max="200" value="${s.kmax}" style="width:70px"></span></div>
-      <p class="note">μ<sub>k</sub> = Σ λ<sub>i</sub><sup>k</sup> = tr(W<sup>k</sup>), which counts weighted closed walks of length k. Plotted as log₁₀ μ<sub>k</sub>${sp.moments.some((m) => m !== null && m <= 0) ? "; zero or negative values are left out" : ""}.</p>
-      <div class="figure" id="momChart"></div>
-    </section>`;
-  $("eigChart").innerHTML = dotChart(sp.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
-  $("momChart").innerHTML = dotChart(sp.moments.map((v, k) => [k + 1, v]).filter(([, v]) => v !== null && v > 0).map(([k, v]) => [k, Math.log10(v)]), "k", "log₁₀ μk", false, true);
-}
 function niceTicks(a, b, count = 5) {
   if (a === b) { a -= 1; b += 1; }
   const raw = (b - a) / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag, step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
@@ -1094,22 +1415,41 @@ function renderIndices() {
 
 /* ---------------- Atoms tab ---------------- */
 function renderAtoms() {
-  const X = res.coords;
+  const X = res.coords, wKey = state.settings.weight || "Z";
+  const showProp = wKey !== "none" && res.atom_props;
+  const pInfo = propOf(wKey);
   $("body").innerHTML = `
     <section>
       <h2>Atoms</h2>
       <p class="note">Coordinates in Å as they are in the file. Numbering starts at ${state.base}; change it in the Download menu.</p>
-      <div class="scroll" style="max-height:none"><table class="data"><thead><tr><th>Atom</th><th class="num">Z</th><th class="num">x</th><th class="num">y</th><th class="num">z</th><th class="num">Bonds</th><th>Bonded to</th></tr></thead><tbody>
-      ${res.symbols.map((s, i) => `<tr class="clickable ${i === sel ? "sel" : ""}" data-sel="${i}"><td>${lab(i)}${res._issueSet.has(i) ? ` <span class="tag no">check</span>` : ""}</td><td class="num">${res.Z[i]}</td><td class="num">${fix(X[i][0], 5)}</td><td class="num">${fix(X[i][1], 5)}</td><td class="num">${fix(X[i][2], 5)}</td><td class="num">${res.degree[i]}</td><td class="small">${res._nb[i].map(lab).join(", ")}</td></tr>`).join("")}
+      <div class="scroll" style="max-height:none"><table class="data"><thead><tr><th>Atom</th><th class="num">Z</th>${showProp ? `<th class="num">${esc(pInfo.short)}${pInfo.unit ? ` (${esc(pInfo.unit)})` : ""}</th>` : ""}<th class="num">x</th><th class="num">y</th><th class="num">z</th><th class="num">Bonds</th><th>Bonded to</th></tr></thead><tbody>
+      ${res.symbols.map((s, i) => `<tr class="clickable ${i === sel ? "sel" : ""}" data-sel="${i}"><td>${lab(i)}${res._issueSet.has(i) ? ` <span class="tag no">check</span>` : ""}</td><td class="num">${res.Z[i]}</td>${showProp ? `<td class="num">${fmtW(res.atom_props[i])}</td>` : ""}<td class="num">${fix(X[i][0], 5)}</td><td class="num">${fix(X[i][1], 5)}</td><td class="num">${fix(X[i][2], 5)}</td><td class="num">${res.degree[i]}</td><td class="small">${res._nb[i].map(lab).join(", ")}</td></tr>`).join("")}
       </tbody></table></div>
     </section>`;
   if (sel !== null) { const tr = $("body").querySelector("tr.sel"); tr && tr.scrollIntoView({ block: "nearest" }); }
 }
 
 /* ---------------- downloads ---------------- */
-const DL = [["all", "Everything", ".zip"], null, ["adjacency.csv", "Adjacency matrix", ".csv"], ["eigenvalues.csv", "Eigenvalues", ".csv"], ["k_moment.csv", "Spectral moments", ".csv"],
-  ["wiener.csv", "Wiener index", ".csv"], ["estrada.csv", "Estrada index and centrality", ".csv"], ["bonds.csv", "Bond list with distances", ".csv"],
-  ["adjacency_list.txt", "Adjacency list", ".txt"], ["report.txt", "Summary report", ".txt"], null, ["png", "Picture of the molecule", ".png"]];
+const DL = [
+  ["all", "Everything", ".zip"],
+  null,
+  ["adjacency.csv", "Undirected matrix W", ".csv"],
+  ["eigenvalues.csv", "Undirected eigenvalues", ".csv"],
+  ["k_moment.csv", "Undirected moments", ".csv"],
+  ["adjacency_list.txt", "Undirected adjacency list", ".txt"],
+  null,
+  ["directed_adjacency.csv", "Directed matrix W_dir", ".csv"],
+  ["directed_eigenvalues.csv", "Directed eigenvalues", ".csv"],
+  ["directed_k_moment.csv", "Directed moments", ".csv"],
+  ["directed_adjacency_list.txt", "Directed adjacency list", ".txt"],
+  null,
+  ["wiener.csv", "Wiener index", ".csv"],
+  ["estrada.csv", "Estrada index and centrality", ".csv"],
+  ["bonds.csv", "Bond list with weights", ".csv"],
+  ["report.txt", "Summary report", ".txt"],
+  null,
+  ["png", "Picture of the molecule", ".png"],
+];
 function renderMenu() {
   $("dlMenu").innerHTML = DL.map((d) => d ? `<button role="menuitem" data-dl="${d[0]}"><span>${d[1]}</span><span class="ext">${d[2]}</span></button>` : "<hr>").join("")
     + `<hr><div class="numbering"><span>Number atoms from</span>${seg("base", String(state.base), [["1", "1"], ["0", "0 (old app)"]])}</div>`;
@@ -1179,7 +1519,11 @@ window.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth -
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; $("dropGlow").hidden = true; const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { renderStage(); renderBody(true); });
-window.addEventListener("resize", debounce(() => { if (res && state.tab === "matrix" && state.matrixView === "map") drawHeat(); }, 150));
+window.addEventListener("resize", debounce(() => {
+  if (!res) return;
+  if (state.tab === "undirected" && state.matrixView === "map") drawHeat("heat", "readout", false);
+  if (state.tab === "directed" && state.dirMatrixView === "map") drawHeat("dirHeat", "dirReadout", true);
+}, 150));
 // apply restored view toggles before boot finishes
 const saved0 = restore(); if (saved0 && saved0.view) for (const [id, key] of [["vH", "h"], ["vLabels", "labels"], ["vNear", "near"]]) if (key in saved0.view) $(id).checked = saved0.view[key];
 boot();

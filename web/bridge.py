@@ -9,7 +9,12 @@ import numpy as np
 import graph_core as gc
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-EXAMPLES = {"benzene": "benzene.xyz", "cubane": "cubane.xyz", "adamantane": "adamantane.xyz"}
+EXAMPLES = {
+    "hocl": "hocl.xyz",
+    "benzene": "benzene.xyz",
+    "cubane": "cubane.xyz",
+    "adamantane": "adamantane.xyz",
+}
 _state = {"frames": None, "name": None, "cache": None}
 
 
@@ -34,8 +39,23 @@ def _default(o):
 
 
 def options():
-    return _ok(defaults=gc.DEFAULT_SETTINGS, legacy=gc.LEGACY_PAIR_TABLE, radii=gc.COVALENT_RADII,
-               default_radius=gc.DEFAULT_RADIUS, examples=list(EXAMPLES))
+    props = [
+        {
+            "key": k,
+            "available": bool(p["values"]),
+            **{f: p[f] for f in ("label", "short", "unit", "about")},
+        }
+        for k, p in gc.PROPERTIES.items()
+    ]
+    return _ok(
+        defaults=gc.DEFAULT_SETTINGS,
+        legacy=gc.LEGACY_PAIR_TABLE,
+        radii=gc.COVALENT_RADII,
+        default_radius=gc.DEFAULT_RADIUS,
+        examples=list(EXAMPLES),
+        supported_elements=list(gc.SUPPORTED_ELEMENTS),
+        properties=props,
+    )
 
 
 def load(name, text):

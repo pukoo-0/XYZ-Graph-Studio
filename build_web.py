@@ -9,9 +9,14 @@ import json
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FILES = ["graph_core.py", os.path.join("web", "bridge.py"),
-         os.path.join("examples", "benzene.xyz"), os.path.join("examples", "cubane.xyz"),
-         os.path.join("examples", "adamantane.xyz")]
+FILES = [
+    "graph_core.py",
+    os.path.join("web", "bridge.py"),
+    os.path.join("examples", "hocl.xyz"),
+    os.path.join("examples", "benzene.xyz"),
+    os.path.join("examples", "cubane.xyz"),
+    os.path.join("examples", "adamantane.xyz"),
+]
 MARKER = "/*__PY_FILES__*/{}"
 
 
@@ -19,7 +24,7 @@ def build() -> str:
     files = {os.path.basename(f): open(os.path.join(HERE, f), encoding="utf-8").read() for f in FILES}
     template = open(os.path.join(HERE, "web", "index.src.html"), encoding="utf-8").read()
     assert MARKER in template, "the placeholder for the embedded files is missing from web/index.src.html"
-    return template.replace(MARKER, json.dumps(files, ensure_ascii=False).replace("</", "<\\/"), 1)
+    return template.replace(MARKER, json.dumps(files, ensure_ascii=False).replace("</", "<\/"), 1)
 
 
 def main():

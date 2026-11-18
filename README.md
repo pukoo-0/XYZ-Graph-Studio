@@ -1,8 +1,12 @@
 # XYZ Graph Studio
 
-Turns an `.xyz` file into a molecular graph and computes the adjacency matrix, its eigenvalues, graph
-energies, spectral moments, and the Wiener, Estrada, Zagreb and Randić indices. Before any of that, it
-checks that the bonds make chemical sense, because every number downstream depends on them.
+Turns an `.xyz` file into two edge-weighted molecular graph representations across five atomic
+properties (**MIREZ**: Mass, first Ionisation energy, covalent Radius, Allen Electronegativity, and
+atomic number Z) for the 16 main-group covalent elements (`H` + Groups 13–17 across Periods 2–4,
+including `SCHNOP`):
+
+1. **Undirected sum graph ($W_{\text{sum}}$):** $W_{ij} = p_i + p_j$ on covalent bonds, $W_{ii} = 0$ (symmetric).
+2. **Directed target-weighted graph ($W_{\text{dir}}$):** $W_{ij} = p_j$ for directed arc $i \to j$, $W_{ii} = 0$ (non-symmetric).
 
 Runs entirely in the browser: Python (Pyodide + NumPy) is downloaded once, and files never leave the
 visitor's computer.
@@ -20,27 +24,21 @@ visitor's computer.
 | Tab | Contents |
 |---|---|
 | Bonds | Bond check per atom, histogram of all distances with the cutoff marked, bond rule, close calls, manual add/remove |
-| Graph | 2D drawing (spring layout or flattened 3D shape), with or without hydrogens; adjacency list |
-| Matrix | W = A + diag(Z) or plain A, as a map or as numbers |
-| Spectrum | Σ\|λ\|, centred energy Σ\|λ − tr W/n\|, Gutman graph energy of A; eigenvalues; μ_k = tr(W^k) |
-| Indices | Wiener, Estrada, Zagreb M1 and M2, Randić for the full and the H-suppressed graph; subgraph centrality |
-| Atoms | Coordinates, number of bonds, neighbours |
+| Undirected | MIREZ property selector, 2D graph with $w_{ij} = p_i + p_j$ edge weights, symmetric matrix $W_{\text{sum}}$ (map & numbers), weighted adjacency list, eigenvalues, energies, and spectral moments $\mu_k$ |
+| Directed | MIREZ property selector, 2D directed graph with curved arcs $i \to j$ ($p_j$) and $j \to i$ ($p_i$), non-symmetric matrix $W_{\text{dir}}$ (map & numbers), directed adjacency list, eigenvalues, energies, and spectral moments $\mu_k$ |
+| Indices | Wiener, Estrada, Zagreb $M_1$ and $M_2$, Randić for the full and the H-suppressed graph; subgraph centrality |
+| Atoms | Coordinates, atomic number $Z$, active MIREZ property value, number of bonds, neighbours |
 
-The Download menu saves every result as .csv/.txt (or all of them in one .zip) and a picture of the
-molecule. The .csv layouts match the old desktop app. Atom numbers can start at 1 (like the file) or 0
-(like the old app).
+### Supported elements & MIREZ constant sources
 
-### Bond rule
+Supported 16 main-group covalent elements: `H, B, C, N, O, F, Al, Si, P, S, Cl, Ga, Ge, As, Se, Br`.
+Passing any atom outside this set raises a `ValueError`.
 
-Default: atoms i and j are bonded when `d_ij ≤ 1.20 × (r_i + r_j)`, with covalent radii from
-Cordero et al., *Dalton Trans.* 2008, 2832. The old app's fixed pair table is still available.
-Any bond can be added or removed by hand (click an atom).
-
-### A note on Σ|λ| with Z on the diagonal
-
-For W = A + diag(Z), every eigenvalue is ≥ 0 for ordinary organic molecules (Gershgorin: Z_i ≥ degree_i).
-Then Σ|λ_i| = Σλ_i = tr W = Σ Z_i, which is the same for any set of bonds. The app reports it, but also
-the centred energy and the Gutman energy of A, which do depend on the structure.
+* **`Z` (Atomic number):** exact proton count (`1` to `35`).
+* **`M` (Atomic mass, u):** IUPAC abridged standard atomic weights (2024).
+* **`R` (Covalent radius, Å):** Cordero et al., *Dalton Trans.* 2008, 2832.
+* **`E` (Electronegativity):** Allen spectroscopic electronegativity (L. C. Allen, *J. Am. Chem. Soc.* 1989, 111, 9003, Table 1).
+* **`I` (First ionisation energy, eV):** NIST Atomic Spectra Database (Kramida et al.).
 
 ## Files
 
@@ -50,8 +48,8 @@ docs/index.html       ← the finished web app (built, do not edit by hand)
 graph_core.py         ← all the chemistry and graph theory (NumPy only)
 web/bridge.py         ← connects the page to graph_core
 web/index.src.html    ← the page's source (HTML, CSS, JavaScript)
-build_web.py          ← builds docs/index.html from the three files above
-examples/             ← benzene, cubane, adamantane
+build_web.py          ← builds docs/index.html from the files above
+examples/             ← hocl, benzene, cubane, adamantane
 tests/                ← checks against networkx and known values (pytest)
 legacy/               ← the original PySide6 desktop app
 ```
