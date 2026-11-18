@@ -362,6 +362,7 @@ function shade(hex, f) {   // f > 0 lightens towards white, f < 0 darkens
   return `rgb(${r | 0},${g | 0},${b | 0})`;
 }
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const isLight = (hex) => { const n = parseInt(hex.slice(1), 16); return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 150; };
 
 /* ---------------- small UI helpers ---------------- */
 let toastTimer = null;
@@ -636,6 +637,17 @@ const mol = {
     this.R = matMul(matMul(rotX(-0.42), rotY(0.5)), rows);
     this.zoom = 1; this.pan = [0, 0];
   },
+  project(p, w, h, fit, cam) {
+    const R = this.R, c = this.center;
+    const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+    const v = [
+      R[0][0] * d[0] + R[0][1] * d[1] + R[0][2] * d[2],
+      R[1][0] * d[0] + R[1][1] * d[1] + R[1][2] * d[2],
+      R[2][0] * d[0] + R[2][1] * d[1] + R[2][2] * d[2],
+    ];
+    const k = cam / (cam - v[2]);
+    return { x: w / 2 + this.pan[0] + v[0] * fit * k, y: h / 2 + this.pan[1] - v[1] * fit * k, z: v[2], k };
+  },
   draw(target) {
     const cv = target ? target.canvas : this.canvas, ctx = cv.getContext("2d");
     const dpr = target ? target.dpr : (window.devicePixelRatio || 1);
@@ -645,45 +657,78 @@ const mol = {
     if (target && target.bg) { ctx.fillStyle = target.bg; ctx.fillRect(0, 0, w, h); }
     if (!res) return;
     if (this.reset) { this.orient(); this.reset = false; }
-    const showH = state.view.h, R = this.R, c = this.center;
+    const showH = state.view.h;
     const fit = Math.min(w, h * 1.1) / (2.15 * this.size) * this.zoom, cam = this.size * 5;
-    const P = res.coords.map((p) => {
-      const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
-      const v = [R[0][0] * d[0] + R[0][1] * d[1] + R[0][2] * d[2], R[1][0] * d[0] + R[1][1] * d[1] + R[1][2] * d[2], R[2][0] * d[0] + R[2][1] * d[1] + R[2][2] * d[2]];
-      const k = cam / (cam - v[2]);
-      return { x: w / 2 + this.pan[0] + v[0] * fit * k, y: h / 2 + this.pan[1] - v[1] * fit * k, z: v[2], k };
-    });
+    const P = res.coords.map((p) => this.project(p, w, h, fit, cam));
     this.proj = P; this.fit = fit;
     const vis = (i) => showH || res.symbols[i] !== "H";
     const items = [];
-    res.symbols.forEach((s, i) => { if (vis(i)) items.push({ t: 0, i, z: P[i].z }); });
-    res.bonds.forEach(([i, j, , , src]) => { if (vis(i) && vis(j)) items.push({ t: 1, i, j, z: (P[i].z + P[j].z) / 2 - 0.01, src }); });
-    items.sort((a, b) => a.z - b.z);
     const selNb = sel !== null ? new Set(res._nb[sel]) : null;
     const outline = cssVar("--ink"), accent = cssVar("--accent"), bad = cssVar("--bad"), warn = cssVar("--warn");
-    for (const it of items) {
-      if (it.t === 1) {
-        const a = P[it.i], b = P[it.j], lw = Math.max(1.6, 0.14 * fit * (a.k + b.k) / 2);
-        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, hl = sel !== null && (it.i === sel || it.j === sel);
-        ctx.lineCap = "round";
-        ctx.strokeStyle = hl ? accent : "rgba(20,30,35,.55)"; ctx.lineWidth = lw + (hl ? 3.2 : 1.6);
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        ctx.lineWidth = lw;
-        ctx.strokeStyle = shade(colorOf(res.symbols[it.i]), -0.08); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mx, my); ctx.stroke();
-        ctx.strokeStyle = shade(colorOf(res.symbols[it.j]), -0.08); ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(b.x, b.y); ctx.stroke();
-        if (it.src === "added") { ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]); }
-      } else {
-        const p = P[it.i], s = res.symbols[it.i], r = Math.max(2.5, drawR(s) * fit * p.k), col = colorOf(s);
+
+    // Bonds: two half-sticks starting at each atom's spherical surface (so sticks never poke inside spheres)
+    const bondR = 0.14;
+    const hw = bondR * 0.8;
+    const exitAt = (r) => Math.sqrt(Math.max(r * r - hw * hw, 0));
+    res.bonds.forEach(([i, j, , , src]) => {
+      if (!vis(i) || !vis(j)) return;
+      const Xi = res.coords[i], Xj = res.coords[j];
+      const d = [Xj[0] - Xi[0], Xj[1] - Xi[1], Xj[2] - Xi[2]];
+      const len = Math.hypot(...d) || 1, u = d.map((v) => v / len);
+      const si = Math.min(exitAt(drawR(res.symbols[i])), len * 0.45);
+      const sj = Math.min(exitAt(drawR(res.symbols[j])), len * 0.45);
+      const at = (t) => this.project([Xi[0] + u[0] * t, Xi[1] + u[1] * t, Xi[2] + u[2] * t], w, h, fit, cam);
+      const tm = (si + len - sj) / 2;
+      const uz = Math.abs(this.R[2][0] * u[0] + this.R[2][1] * u[1] + this.R[2][2] * u[2]);
+      const hl = sel !== null && (i === sel || j === sel);
+      for (const [atom, t0, t1] of [[i, si, tm], [j, len - sj, tm]]) {
+        const a = at(t0), m = at(t1), ang = Math.atan2(m.y - a.y, m.x - a.x);
+        const lw = Math.max(1.5, bondR * fit * (a.k + m.k) / 2 * 1.6);
+        const fill = shade(colorOf(res.symbols[atom]), -0.08);
+        const end = (r) => { ctx.beginPath(); ctx.ellipse(a.x, a.y, Math.max(r * uz, 0.01), r, ang, 0, Math.PI * 2); ctx.fill(); };
+        items.push({ z: (a.z + m.z) / 2 - 0.01, f: () => {
+          ctx.lineCap = "butt";
+          ctx.strokeStyle = ctx.fillStyle = hl ? accent : "rgba(20,30,35,.55)";
+          ctx.lineWidth = lw + (hl ? 3.0 : 1.6);
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(m.x, m.y); ctx.stroke(); end(lw / 2 + (hl ? 1.5 : 0.8));
+          ctx.strokeStyle = ctx.fillStyle = fill;
+          ctx.lineWidth = lw;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(m.x, m.y); ctx.stroke(); end(lw / 2);
+          if (src === "added") {
+            ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.setLineDash([3, 3]);
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(m.x, m.y); ctx.stroke(); ctx.setLineDash([]);
+          }
+        } });
+      }
+    });
+
+    // Atoms + depth-sorted centered labels (rear labels are occluded by closer spheres and bonds)
+    const showLabSet = state.view.labels ? null : (sel !== null ? new Set([sel, ...res._nb[sel]]) : null);
+    const labFont = `600 ${res.n > 150 ? 10 : 11}px ${getComputedStyle(document.body).fontFamily}`;
+    res.symbols.forEach((s, i) => {
+      if (!vis(i)) return;
+      const p = P[i], r = Math.max(2.5, drawR(s) * fit * p.k), col = colorOf(s);
+      const drawLab = state.view.labels || (showLabSet && showLabSet.has(i));
+      items.push({ z: p.z, f: () => {
         const g = ctx.createRadialGradient(p.x - r * 0.38, p.y - r * 0.42, r * 0.08, p.x, p.y, r);
         g.addColorStop(0, shade(col, 0.75)); g.addColorStop(0.55, col); g.addColorStop(1, shade(col, -0.42));
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
         ctx.lineWidth = 1; ctx.strokeStyle = "rgba(10,20,25,.45)"; ctx.stroke();
-        if (res._issueSet.has(it.i)) { ctx.strokeStyle = bad; ctx.lineWidth = 2.2; ctx.setLineDash([3, 2.5]); ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
-        if (it.i === sel) { ctx.strokeStyle = accent; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
-        else if (selNb && selNb.has(it.i)) { ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
-        if (it.i === this.hover && it.i !== sel) { ctx.strokeStyle = outline; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
-      }
-    }
+        if (res._issueSet.has(i)) { ctx.strokeStyle = bad; ctx.lineWidth = 2.2; ctx.setLineDash([3, 2.5]); ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+        if (i === sel) { ctx.strokeStyle = accent; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
+        else if (selNb && selNb.has(i)) { ctx.strokeStyle = accent; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+        if (i === this.hover && i !== sel) { ctx.strokeStyle = outline; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
+        if (drawLab) {
+          const t = lab(i), light = isLight(col);
+          ctx.font = labFont; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.lineWidth = 3; ctx.strokeStyle = light ? "rgba(255,255,255,.9)" : "rgba(0,0,0,.75)"; ctx.strokeText(t, p.x, p.y);
+          ctx.fillStyle = i === sel ? accent : (light ? "#1D2A31" : "#FFFFFF"); ctx.fillText(t, p.x, p.y);
+        }
+      } });
+    });
+
+    items.sort((a, b) => a.z - b.z).forEach((it) => it.f());
+
     if (state.view.near) {
       ctx.strokeStyle = warn; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
       for (const q of res.near) {
@@ -691,18 +736,6 @@ const mol = {
         ctx.beginPath(); ctx.moveTo(P[q.i].x, P[q.i].y); ctx.lineTo(P[q.j].x, P[q.j].y); ctx.stroke();
       }
       ctx.setLineDash([]);
-    }
-    if (state.view.labels || sel !== null) {
-      ctx.font = `500 ${res.n > 150 ? 10 : 11}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      const halo = cssVar("--halo");
-      const which = state.view.labels ? res.symbols.map((_, i) => i) : [sel, ...res._nb[sel]];
-      for (const i of which) {
-        if (!vis(i)) continue;
-        const p = P[i], t = lab(i), r = Math.max(2.5, drawR(res.symbols[i]) * fit * p.k);
-        const y = p.y - r - 8;
-        ctx.lineWidth = 3.5; ctx.strokeStyle = halo; ctx.strokeText(t, p.x, y);
-        ctx.fillStyle = i === sel ? accent : outline; ctx.fillText(t, p.x, y);
-      }
     }
   },
   hit(x, y) {
@@ -1054,6 +1087,28 @@ function spectrumBlockHTML(spec, label, diagZ, isDir, kInputId, eigChartId, momC
     </section>`;
 }
 
+/* ---------------- Collision-free 2D edge label placement ---------------- */
+function placeEdgePills(candidates, nodeBoxes, W, H) {
+  // candidates: [{ priority, tip, cls, txt, pts: [{x, y}, ...] }]
+  const placed = [];
+  const occupied = nodeBoxes.map(([cx, cy, r]) => ({ x0: cx - r - 2, y0: cy - r - 2, x1: cx + r + 2, y1: cy + r + 2 }));
+  const overlaps = (a, b) => !(a.x1 <= b.x0 || a.x0 >= b.x1 || a.y1 <= b.y0 || a.y0 >= b.y1);
+  const sorted = [...candidates].sort((a, b) => b.priority - a.priority);
+  for (const c of sorted) {
+    const pw = Math.max(15, c.txt.length * 5.7 + 7), ph = 13;
+    for (const pt of c.pts) {
+      const box = { x0: pt.x - pw / 2 - 1.5, y0: pt.y - ph / 2 - 1.5, x1: pt.x + pw / 2 + 1.5, y1: pt.y + ph / 2 + 1.5 };
+      if (box.x0 < 2 || box.x1 > W - 2 || box.y0 < 2 || box.y1 > H - 2) continue;
+      if (!occupied.some((o) => overlaps(box, o))) {
+        occupied.push(box);
+        placed.push({ x: pt.x, y: pt.y, pw, ph, txt: c.txt, cls: c.cls || "", tip: c.tip });
+        break;
+      }
+    }
+  }
+  return placed;
+}
+
 /* ---------------- Tab 1: Undirected weighted graph (W_ij = p_i + p_j) ---------------- */
 function renderUndirected() {
   const L = graphLayout(state.graphH, state.graphLayout), W = 600, H = Math.round(W * Math.max(0.62, L.aspect) + 20), pad = 26;
@@ -1062,28 +1117,46 @@ function renderUndirected() {
   const big = L.nodes.length <= 70;
   const wKey = state.settings.weight || "Z";
   const weighted = wKey !== "none";
-  const showW = state.graphWeights && weighted && L.edges.length <= 120;
+  const showW = state.graphWeights && weighted;
+  const nodeR = (idx) => (res.symbols[idx] === "H" ? (big ? 7 : 3.5) : (big ? 10 : 5.5));
 
-  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Undirected weighted molecular graph">`;
+  let svg = `<svg class="graph-svg" id="undirSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Undirected weighted molecular graph">`;
+  const pillCandidates = [];
   L.edges.forEach(([a, b]) => {
-    const hl = sel !== null && (L.nodes[a] === sel || L.nodes[b] === sel);
-    svg += `<line x1="${P[a][0]}" y1="${P[a][1]}" x2="${P[b][0]}" y2="${P[b][1]}" class="${hl ? "hl" : ""}"/>`;
+    const ia = L.nodes[a], ib = L.nodes[b];
+    const hl = sel !== null && (ia === sel || ib === sel);
+    const w = sumWeight(ia, ib);
+    const tip = weighted && w !== undefined
+      ? `${lab(ia)}–${lab(ib)}: w = ${fmtW(w)} (${wKey}: ${fmtW(res.atom_props[ia])} + ${fmtW(res.atom_props[ib])})`
+      : `${lab(ia)}–${lab(ib)}`;
+    svg += `<line x1="${P[a][0].toFixed(1)}" y1="${P[a][1].toFixed(1)}" x2="${P[b][0].toFixed(1)}" y2="${P[b][1].toFixed(1)}" class="${hl ? "hl" : ""}" data-etip="${esc(tip)}"><title>${esc(tip)}</title></line>`;
+    if (showW && w !== undefined) {
+      const [x1, y1] = P[a], [x2, y2] = P[b];
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const pts = [
+        { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
+        { x: x1 + 0.38 * dx, y: y1 + 0.38 * dy },
+        { x: x1 + 0.62 * dx, y: y1 + 0.62 * dy },
+        { x: (x1 + x2) / 2 + nx * 8, y: (y1 + y2) / 2 + ny * 8 },
+        { x: (x1 + x2) / 2 - nx * 8, y: (y1 + y2) / 2 - ny * 8 },
+      ];
+      pillCandidates.push({ priority: (hl ? 1000 : 0) + len, tip, cls: hl ? "out" : "", txt: fmtW(w), pts });
+    }
   });
   if (showW) {
-    L.edges.forEach(([a, b]) => {
-      const w = sumWeight(L.nodes[a], L.nodes[b]);
-      if (w === undefined) return;
-      const txt = fmtW(w);
-      const mx = (P[a][0] + P[b][0]) / 2, my = (P[a][1] + P[b][1]) / 2;
-      const pw = Math.max(16, txt.length * 6.2 + 8), ph = 14;
-      svg += `<rect class="w-pill" x="${mx - pw / 2}" y="${my - ph / 2}" width="${pw}" height="${ph}" rx="3"/>`;
-      svg += `<text class="w-label" x="${mx}" y="${my + 3.2}" text-anchor="middle">${txt}</text>`;
+    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
+    const pills = placeEdgePills(pillCandidates, nodeBoxes, W, H);
+    pills.forEach((pl) => {
+      svg += `<g data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title><rect class="w-pill ${pl.cls}" x="${(pl.x - pl.pw / 2).toFixed(1)}" y="${(pl.y - pl.ph / 2).toFixed(1)}" width="${pl.pw.toFixed(1)}" height="${pl.ph}" rx="3"/>`;
+      svg += `<text class="w-label" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.1).toFixed(1)}" text-anchor="middle">${pl.txt}</text></g>`;
     });
   }
   L.nodes.forEach((i, k) => {
-    const s = res.symbols[i], r = s === "H" ? (big ? 7 : 3.5) : (big ? 10 : 5.5);
-    svg += `<circle data-sel="${i}" cx="${P[k][0]}" cy="${P[k][1]}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${lab(i)}, ${plural(res._nb[i].length, "bond")}</title></circle>`;
-    if (big) svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
+    const s = res.symbols[i], r = nodeR(i);
+    const nTip = `${lab(i)}, ${plural(res._nb[i].length, "bond")}${weighted && res.atom_props ? ` (${wKey} = ${fmtW(res.atom_props[i])})` : ""}`;
+    svg += `<circle data-sel="${i}" data-etip="${esc(nTip)}" cx="${P[k][0].toFixed(1)}" cy="${P[k][1].toFixed(1)}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${esc(nTip)}</title></circle>`;
+    if (big) svg += `<text x="${P[k][0].toFixed(1)}" y="${(P[k][1] + 3).toFixed(1)}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
   });
   svg += "</svg>";
 
@@ -1105,7 +1178,7 @@ function renderUndirected() {
         <div class="row">${seg("layout", state.graphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
         <label class="row small"><input type="checkbox" id="gW" ${state.graphWeights ? "checked" : ""} ${weighted ? "" : "disabled"}>Edge weights</label>
         <label class="row small"><input type="checkbox" id="gH" ${state.graphH ? "checked" : ""}>Hide hydrogens</label></div></div>
-      <div class="figure">${svg}</div>
+      <div class="figure">${svg}<div class="readout" id="undirReadout">Point at an edge or atom to read its weight. Overlapping labels are automatically hidden; hover any edge to inspect it.</div></div>
       ${state.graphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="relayout">Lay out again from the current 3D view</button></div>` : ""}
     </section>
     <section>
@@ -1124,6 +1197,7 @@ function renderUndirected() {
     </section>
     ${spectrumBlockHTML(res.spectrum, "undirected", diagZ, false, "kmax", "eigChart", "momChart")}`;
 
+  wireSvgReadout("undirSvg", "undirReadout");
   if (state.matrixView === "map") drawHeat("heat", "readout", false);
   const sp = res.spectrum;
   $("eigChart").innerHTML = dotChart(sp.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
@@ -1138,9 +1212,9 @@ function renderDirected() {
   const big = L.nodes.length <= 70;
   const wKey = state.settings.weight || "Z";
   const weighted = wKey !== "none";
-  const showW = state.dirGraphWeights && L.edges.length <= 80;
+  const showW = state.dirGraphWeights;
 
-  let svg = `<svg class="graph-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Directed weighted molecular graph">
+  let svg = `<svg class="graph-svg" id="dirSvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Directed weighted molecular graph">
     <defs>
       <marker id="arr-def" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
         <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="var(--ink3)"/>
@@ -1158,14 +1232,13 @@ function renderDirected() {
     return s === "H" ? (big ? 7 : 3.5) : (big ? 10.5 : 5.5);
   };
 
-  // Draw two curved arcs per bond: a -> b (weight p_b) and b -> a (weight p_a)
-  const arcLabels = [];
+  const pillCandidates = [];
   L.edges.forEach(([a, b]) => {
     const ia = L.nodes[a], ib = L.nodes[b];
     const [x1, y1] = P[a], [x2, y2] = P[b];
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
     const ux = dx / len, uy = dy / len;
-    const nx = -uy, ny = ux; // unit normal
+    const nx = -uy, ny = ux;
     const bow = Math.min(13, Math.max(6, len * 0.13));
 
     for (const [fromK, toK, fromAtom, toAtom, sign] of [[a, b, ia, ib, 1], [b, a, ib, ia, -1]]) {
@@ -1184,30 +1257,44 @@ function renderDirected() {
       const isIn = sel !== null && toAtom === sel;
       const cls = isOut ? "arc out" : isIn ? "arc in" : "arc";
       const mk = isOut ? "url(#arr-out)" : isIn ? "url(#arr-in)" : "url(#arr-def)";
-      svg += `<path d="M ${p0x.toFixed(1)} ${p0y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${p2x.toFixed(1)} ${p2y.toFixed(1)}" class="${cls}" marker-end="${mk}"/>`;
+      const w = dirWeight(fromAtom, toAtom);
+      const tip = weighted && w !== undefined
+        ? `${lab(fromAtom)} → ${lab(toAtom)}: w = ${fmtW(w)} (target ${wKey} of ${lab(toAtom)})`
+        : `${lab(fromAtom)} → ${lab(toAtom)}`;
 
-      if (showW) {
-        const w = dirWeight(fromAtom, toAtom);
-        if (w !== undefined) {
-          // Quadratic Bezier midpoint at t = 0.5: 0.25*P0 + 0.5*C + 0.25*P2
-          const lx = 0.25 * p0x + 0.5 * cx + 0.25 * p2x;
-          const ly = 0.25 * p0y + 0.5 * cy + 0.25 * p2y;
-          arcLabels.push({ lx, ly, txt: fmtW(w), cls: isOut ? "out" : isIn ? "in" : "", tip: `${lab(fromAtom)} → ${lab(toAtom)}: ${fmtW(w)}` });
-        }
+      svg += `<path d="M ${p0x.toFixed(1)} ${p0y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${p2x.toFixed(1)} ${p2y.toFixed(1)}" class="${cls}" marker-end="${mk}" data-etip="${esc(tip)}"><title>${esc(tip)}</title></path>`;
+
+      if (showW && w !== undefined) {
+        const bez = (t) => {
+          const mt = 1 - t;
+          return { x: mt * mt * p0x + 2 * mt * t * cx + t * t * p2x, y: mt * mt * p0y + 2 * mt * t * cy + t * t * p2y };
+        };
+        const pts = [bez(0.50), bez(0.38), bez(0.62)];
+        pillCandidates.push({
+          priority: ((isOut || isIn) ? 1000 : 0) + len,
+          tip,
+          cls: isOut ? "out" : isIn ? "in" : "",
+          txt: fmtW(w),
+          pts,
+        });
       }
     }
   });
 
-  arcLabels.forEach((al) => {
-    const pw = Math.max(15, al.txt.length * 6.0 + 7), ph = 13.5;
-    svg += `<g><title>${esc(al.tip)}</title><rect class="w-pill ${al.cls}" x="${(al.lx - pw / 2).toFixed(1)}" y="${(al.ly - ph / 2).toFixed(1)}" width="${pw}" height="${ph}" rx="3"/>`;
-    svg += `<text class="w-label" x="${al.lx.toFixed(1)}" y="${(al.ly + 3.1).toFixed(1)}" text-anchor="middle">${al.txt}</text></g>`;
-  });
+  if (showW) {
+    const nodeBoxes = L.nodes.map((i, k) => [P[k][0], P[k][1], nodeR(i)]);
+    const pills = placeEdgePills(pillCandidates, nodeBoxes, W, H);
+    pills.forEach((pl) => {
+      svg += `<g data-etip="${esc(pl.tip)}"><title>${esc(pl.tip)}</title><rect class="w-pill ${pl.cls}" x="${(pl.x - pl.pw / 2).toFixed(1)}" y="${(pl.y - pl.ph / 2).toFixed(1)}" width="${pl.pw.toFixed(1)}" height="${pl.ph}" rx="3"/>`;
+      svg += `<text class="w-label" x="${pl.x.toFixed(1)}" y="${(pl.y + 3.1).toFixed(1)}" text-anchor="middle">${pl.txt}</text></g>`;
+    });
+  }
 
   L.nodes.forEach((i, k) => {
     const s = res.symbols[i], r = nodeR(i);
-    svg += `<circle data-sel="${i}" cx="${P[k][0]}" cy="${P[k][1]}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${lab(i)}, ${plural(res._nb[i].length, "bond")}</title></circle>`;
-    if (big) svg += `<text x="${P[k][0]}" y="${P[k][1] + 3}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
+    const nTip = `${lab(i)}, ${plural(res._nb[i].length, "bond")}${weighted && res.atom_props ? ` (${wKey} = ${fmtW(res.atom_props[i])})` : ""}`;
+    svg += `<circle data-sel="${i}" data-etip="${esc(nTip)}" cx="${P[k][0].toFixed(1)}" cy="${P[k][1].toFixed(1)}" r="${r}" fill="${colorOf(s)}" class="${i === sel ? "sel" : ""}"><title>${esc(nTip)}</title></circle>`;
+    if (big) svg += `<text x="${P[k][0].toFixed(1)}" y="${(P[k][1] + 3).toFixed(1)}" text-anchor="middle" style="fill:${["N", "O", "Br", "I"].includes(s) ? "#fff" : "#1D2A31"}">${s}</text>`;
   });
   svg += "</svg>";
 
@@ -1227,7 +1314,7 @@ function renderDirected() {
         <div class="row">${seg("dlayout", state.dirGraphLayout, [["spring", "Spring"], ["shape", "Molecule shape"]])}
         <label class="row small"><input type="checkbox" id="dgW" ${state.dirGraphWeights ? "checked" : ""}>Arc weights</label>
         <label class="row small"><input type="checkbox" id="dgH" ${state.dirGraphH ? "checked" : ""}>Hide hydrogens</label></div></div>
-      <div class="figure">${svg}</div>
+      <div class="figure">${svg}<div class="readout" id="dirGraphReadout">Point at an arc or atom to read its weight. Overlapping labels are automatically hidden; hover any arc to inspect it.</div></div>
       ${state.dirGraphLayout === "spring" ? `<div class="row" style="margin-top:8px"><button class="btn small" id="dirRelayout">Lay out again from the current 3D view</button></div>` : ""}
     </section>
     <section>
@@ -1246,10 +1333,20 @@ function renderDirected() {
     </section>
     ${spectrumBlockHTML(res.spectrum_directed, "directed", false, true, "dirKmax", "dirEigChart", "dirMomChart")}`;
 
+  wireSvgReadout("dirSvg", "dirGraphReadout");
   if (state.dirMatrixView === "map") drawHeat("dirHeat", "dirReadout", true);
   const spd = res.spectrum_directed;
   $("dirEigChart").innerHTML = dotChart(spd.eigenvalues.map((v, k) => [k + 1, v]), "index", "λ", true);
   $("dirMomChart").innerHTML = dotChart(spd.moments.map((v, k) => [k + 1, v]).filter(([, v]) => v !== null && v > 0).map(([k, v]) => [k, Math.log10(v)]), "k", "log₁₀ μk", false, true);
+}
+
+function wireSvgReadout(svgId, readoutId) {
+  const svg = $(svgId), out = $(readoutId);
+  if (!svg || !out) return;
+  svg.addEventListener("pointermove", (e) => {
+    const el = e.target.closest("[data-etip]");
+    if (el) out.textContent = el.dataset.etip;
+  });
 }
 
 /* ---------------- Matrix helpers for both Undirected and Directed ---------------- */
